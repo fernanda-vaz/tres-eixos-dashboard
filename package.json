@@ -1,16 +1,40 @@
 {
   "name": "tres-eixos-dashboard",
   "version": "1.0.0",
-  "description": "",
+  "description": "Sistema de gestão para meu negócio de impressão 3D.",
   "main": "index.js",
   "directories": {
-    "doc": "docs"
+    "doc": "docs",
+    "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --import tsx --test test/*.test.ts",
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node dist/src/server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs"
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fernanda-vaz/tres-eixos-dashboard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fernanda-vaz/tres-eixos-dashboard/issues"
+  },
+  "homepage": "https://github.com/fernanda-vaz/tres-eixos-dashboard#readme",
+  "private": true,
+  "dependencies": {
+    "express": "5.3.0",
+    "pg": "8.23.1"
+  },
+  "devDependencies": {
+    "@types/express": "5.0.6",
+    "@types/node": "^24.19.2",
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  }
 }
