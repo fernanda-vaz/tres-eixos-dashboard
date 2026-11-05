@@ -13,7 +13,7 @@ Monólito modular em Node.js 24 + TypeScript + Express 5 + PostgreSQL. Um único
 As dependências apontam para dentro: rotas → serviço → repositório. Repositórios não importam nada de `http/`.
 
 ```
-src/
+api/src/
   app.ts, server.ts      composição, /health, /ready, encerramento gracioso
   db.ts                  pool, withTransaction (um único client por transação), queryPage (página + total)
   pagination.ts          Page, PageRequest, toPage
@@ -30,7 +30,7 @@ src/
   outbox-worker.ts       publicação dos eventos (lote alugado com SKIP LOCKED, fora de transação)
   worker.ts              processo do worker (npm run worker / serviço "worker")
   scripts/               migrate.mjs, create-user.ts
-migrations/              001…006, aplicadas em ordem; nunca editar uma já aplicada
+api/migrations/          001…009, aplicadas em ordem; nunca editar uma já aplicada
 web/                     painel React (Vite); em produção, nginx serve o build e faz proxy de /api
 ```
 

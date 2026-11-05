@@ -40,11 +40,11 @@ Node.js 24, TypeScript, Express 5, PostgreSQL 16, React 19 + Vite, Docker Compos
 
 ```bash
 cp .env.example .env
-npm ci
+cd api && npm ci && cd ..
 cd web && npm ci && cd ..
 ```
 
-Edite o `.env`:
+O `.env` fica na raiz porque é compartilhado pela API, pelo proxy do Vite e pelo Docker Compose. Edite o `.env`:
 
 | Variável | Para que serve |
 |---|---|
@@ -59,11 +59,12 @@ O `.env` nunca vai para o Git nem para as imagens Docker.
 ## 2. Banco de dados e migrations
 
 ```bash
+cd api
 npm run db:up        # sobe o PostgreSQL (container tres-eixos-postgres)
-npm run migrate      # aplica as migrations pendentes de migrations/ em ordem
+npm run migrate      # aplica as migrations pendentes de api/migrations/ em ordem
 ```
 
-O `migrate` pode ser rodado sempre: ele aplica só o que falta e registra tudo em `schema_migrations`. **Nunca edite uma migration já aplicada**; crie a próxima (`007_...sql`).
+O `migrate` pode ser rodado sempre: ele aplica só o que falta e registra tudo em `schema_migrations`. **Nunca edite uma migration já aplicada**; crie a próxima (`010_...sql`).
 
 Para conferir no psql:
 
@@ -76,16 +77,17 @@ docker compose exec postgres psql -U app -d app -c "SELECT name, applied_at FROM
 Não existe cadastro público. Crie a conta pelo terminal (a senha é pedida sem eco, mínimo 12 caracteres):
 
 ```bash
+cd api
 npm run user:create -- --email voce@exemplo.com --name "Seu nome"
 ```
 
 ## 4. Colocar no ar: opção A, desenvolvimento local
 
-Três terminais, na raiz do projeto:
+Três terminais, a partir da raiz do projeto:
 
 ```bash
-npm run dev                  # terminal 1: API em http://localhost:<PORT>, reinicia ao salvar
-npm run worker               # terminal 2: publica os eventos do outbox (opcional)
+cd api && npm run dev        # terminal 1: API em http://localhost:<PORT>, reinicia ao salvar
+cd api && npm run worker     # terminal 2: publica os eventos do outbox (opcional)
 cd web && npm run dev        # terminal 3: painel em http://localhost:5173
 ```
 
@@ -102,7 +104,7 @@ Para parar, use `Ctrl+C` em cada terminal.
 
 ## 5. Colocar no ar: opção B, tudo no Docker Compose
 
-Sobe banco, API, worker e painel (nginx), como em uma demonstração:
+Sobe banco, API, worker e painel (nginx), como em uma demonstração. Os comandos rodam na raiz do projeto, onde fica o `compose.yaml`:
 
 ```bash
 docker compose up -d postgres
@@ -198,10 +200,11 @@ Também vale testar os erros esperados:
 ### Testes automatizados
 
 ```bash
+cd api
 npm test                     # regras puras (estoque, pedidos, fila, validação, conector), sem banco
 npm run test:integration     # PostgreSQL real: concorrência, idempotência, produção, importação, worker, login
 npm run typecheck
-cd web && npm test && npm run lint && npm run build
+cd ../web && npm test && npm run lint && npm run build
 ```
 
 Os testes de integração usam `TEST_DATABASE_URL` e **recriam o schema** desse banco a cada execução. Por isso se recusam a rodar em um banco cujo nome não termine em `_test`. Nunca aponte para o banco real da loja.
@@ -220,19 +223,22 @@ docker compose exec -T postgres sh -c 'pg_dump -U app app' > backups/demo.sql
 ## Estrutura
 
 ```
-src/            API (módulos catalog, inventory, orders, production, integrations, security)
-src/worker.ts   worker do outbox
-migrations/     SQL versionado (001…006)
-test/           testes unitários (test/*.test.ts) e de integração (test/integration/)
-web/            painel React (Vite) + Dockerfile e nginx.conf
-docs/           arquitetura e contratos da API
+api/                backend: projeto Node próprio (package.json, tsconfig, Dockerfile)
+  src/              API (módulos catalog, inventory, orders, production, integrations, security, pricing)
+  src/worker.ts     worker do outbox
+  migrations/       SQL versionado (001…009)
+  test/             testes unitários (test/*.test.ts) e de integração (test/integration/)
+web/                frontend: painel React (Vite) + Dockerfile e nginx.conf
+compose.yaml        postgres, api, worker e web
+.env                configuração local compartilhada (a partir do .env.example)
+docs/               arquitetura e contratos da API
 ```
 
 ## Solução de problemas
 
 | Sintoma | O que verificar |
 |---|---|
-| `DATABASE_URL não configurada` | rode pelos scripts `npm run ...`, que carregam o `.env` |
+| `DATABASE_URL não configurada` | rode pelos scripts `npm run ...` dentro de `api/`, que carregam o `.env` da raiz |
 | `SESSION_SECRET deve ter ao menos 32 caracteres` | defina o segredo no `.env` |
 | Conexão recusada no banco | `npm run db:up` e `docker compose ps`; porta local 5434 |
 | `relation ... does not exist` | `npm run migrate` no banco certo |

@@ -109,7 +109,7 @@ Dinheiro em centavos; percentuais como número com até 2 casas (`16.5`).
 | `PUT /products/:id/cost-sheet` | `{ printMinutes, purgeGrams, laborMinutes, packagingCents, extraCents, targetMarginPercent }` | salva a ficha (`purgeGrams` opcional, padrão 0) |
 | `GET /pricing/products` | `?page=&pageSize=` | custo × preço atual e margem por canal de cada produto ativo |
 
-Cálculo (em `src/pricing/pricing-rules.ts`, só com inteiros):
+Cálculo (em `api/src/pricing/pricing-rules.ts`, só com inteiros):
 
 ```text
 filamento   = Σ (gramas de cada cor da receita × preço/kg daquele filamento)

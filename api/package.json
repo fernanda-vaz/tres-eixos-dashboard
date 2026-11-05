@@ -9,17 +9,17 @@
   },
   "scripts": {
     "test": "node --import tsx --test test/*.test.ts",
-    "dev": "node --env-file=.env --import tsx --watch src/server.ts",
+    "dev": "node --env-file=../.env --import tsx --watch src/server.ts",
     "build": "tsc",
-    "start": "node --env-file=.env dist/src/server.js",
-    "migrate": "node --env-file=.env src/scripts/migrate.mjs",
+    "start": "node --env-file=../.env dist/src/server.js",
+    "migrate": "node --env-file=../.env src/scripts/migrate.mjs",
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:logs": "docker compose logs -f postgres",
-    "test:integration": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 test/integration/*.test.ts",
-    "user:create": "node --env-file=.env --import tsx src/scripts/create-user.ts",
+    "test:integration": "node --env-file-if-exists=../.env --import tsx --test --test-concurrency=1 test/integration/*.test.ts",
+    "user:create": "node --env-file=../.env --import tsx src/scripts/create-user.ts",
     "typecheck": "tsc --noEmit",
-    "worker": "node --env-file=.env --import tsx src/worker.ts"
+    "worker": "node --env-file=../.env --import tsx src/worker.ts"
   },
   "keywords": [],
   "author": "",

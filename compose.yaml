@@ -19,7 +19,7 @@ services:
       retries: 10
 
   api:
-    build: .
+    build: ./api
     environment:
       PORT: "3000"
       NODE_ENV: production
@@ -40,7 +40,7 @@ services:
 
   # Publica os eventos do outbox. Defina OUTBOX_WEBHOOK_URL para enviar por HTTP; sem ela, registra no log.
   worker:
-    build: .
+    build: ./api
     command: ["node", "dist/src/worker.js"]
     environment:
       DATABASE_URL: postgresql://app:app_dev_password@postgres:5432/app
