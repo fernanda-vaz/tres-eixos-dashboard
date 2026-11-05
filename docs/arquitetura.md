@@ -31,6 +31,7 @@ api/src/
   worker.ts              processo do worker (npm run worker / serviço "worker")
   scripts/               migrate.mjs, create-user.ts
 api/migrations/          001…009, aplicadas em ordem; nunca editar uma já aplicada
+web/                     painel React (Vite); em produção, nginx serve o build e faz proxy de /api
 ```
 
 ## Processos
@@ -39,7 +40,31 @@ api/migrations/          001…009, aplicadas em ordem; nunca editar uma já apl
 |---|---|
 | `api` | HTTP: regras de negócio, sessões, importação |
 | `worker` | lê o `outbox` e publica os eventos (log estruturado ou `OUTBOX_WEBHOOK_URL`) |
+| `web` | nginx com o build do painel; `/api/*` → `api:3000/*` |
 | `postgres` | única fonte de verdade |
+
+## Frontend (`web/`)
+
+React 19 + Vite, sem bibliotecas de estado ou de UI. A regra é: **componentes `.tsx` só apresentam**; dados, ações e regras ficam em `.ts`.
+
+```
+web/src/
+  api/          client.ts (fetch, CSRF, ApiError), endpoints.ts (uma função por rota), types.ts (contratos)
+  lib/          funções puras: format, parse, labels (status → rótulo e tom), charts, errors, idempotency
+  hooks/        useResource (carga + estados), useAction (escrita sem envio duplo), useSession, useHashRoute
+  components/
+    ui/         design system reutilizável: Button, Card, Badge, TextField/SelectField, Form, DataTable,
+                Drawer, SegmentedControl, StatCard, DonutChart, BarList, ProgressBar, ResourceView…
+    layout/     AppShell e Sidebar
+  features/<seção>/
+                use*.ts (dados e ações da seção), *-metrics.ts / *-rules.ts (derivações puras), *.tsx (telas)
+  app/routes.ts rotas do menu
+  styles/       tokens (cores, glass, claro/escuro), base, layout, components
+```
+
+- Visual "glass": fundo em degradê claro (lilás → azul-céu → rosa) com brilhos desfocados e painéis translúcidos com `backdrop-filter`. Tema claro fixo, mesmo com o sistema em modo escuro.
+- Cores semânticas via classes `tone-*` (que expõem `--tone`): o mesmo tom serve para badge, gráfico, barra e ícone.
+- Funções puras têm testes com o runner nativo do Node (`cd web && npm test`).
 
 ## Estoque: dois estoques, unidades diferentes
 
@@ -85,7 +110,7 @@ Job de produção: `queued` → `printing` → `done`, ou `cancelled`. Se o pedi
 - Senhas com scrypt (`node:crypto`) e salt por senha.
 - Limite de login por janela de 15 minutos: 5 tentativas por IP+e-mail, 20 por conta (qualquer IP) e 50 por IP. A tentativa é contada **antes** de conferir a senha, numa instrução atômica, então requisições paralelas não furam o limite. A contagem fica no PostgreSQL (`login_attempts`, só hashes das chaves). Efeito aceito: um ataque distribuído pode bloquear o login da conta por até 15 minutos.
 - A sessão anônima criada só para o token CSRF do login dura 10 minutos.
-- Sem CORS: um cliente web deve acessar a API pela mesma origem, via proxy reverso.
+- Sem CORS: o painel acessa a API pela mesma origem, via proxy `/api`.
 - Corpo limitado a 32 kB, listagens paginadas (máx. 100), campos inesperados recusados e erros 500 sem stack trace.
 
 ## Outbox

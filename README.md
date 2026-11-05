@@ -18,6 +18,7 @@ e produção, com integração futura ao Mercado Livre e à Shopee.
 - **Precificação**: custo real de cada peça (filamento, energia, desgaste da impressora, falhas, mão de obra, embalagem) e preço sugerido por canal de venda, já descontando tarifas e imposto.
 - **Integrações**: somente o **simulador** de marketplace. SKUs desconhecidos viram pendência e a importação retoma sem duplicar.
 - **Worker**: publica os eventos do outbox (pedido criado, enviado, cancelado…).
+- **Painel React** com login, para tudo acima (visual claro em estilo glass).
 
 Todos os dados de demonstração são fictícios. Nenhum marketplace real está conectado.
 
@@ -27,7 +28,7 @@ Documentação técnica:
 
 ## Tecnologias
 
-Node.js 24, TypeScript, Express 5, PostgreSQL 16, Docker Compose.
+Node.js 24, TypeScript, Express 5, PostgreSQL 16, React 19 + Vite, Docker Compose.
 
 ## Pré-requisitos
 
@@ -40,9 +41,10 @@ Node.js 24, TypeScript, Express 5, PostgreSQL 16, Docker Compose.
 ```bash
 cp .env.example .env
 cd api && npm ci && cd ..
+cd web && npm ci && cd ..
 ```
 
-O `.env` fica na raiz porque é compartilhado pela API e pelo Docker Compose. Edite o `.env`:
+O `.env` fica na raiz porque é compartilhado pela API, pelo proxy do Vite e pelo Docker Compose. Edite o `.env`:
 
 | Variável | Para que serve |
 |---|---|
@@ -50,7 +52,7 @@ O `.env` fica na raiz porque é compartilhado pela API e pelo Docker Compose. Ed
 | `PORT` | porta da API em desenvolvimento (ex.: `8080`) |
 | `SESSION_SECRET` | **troque** por um valor aleatório: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `TEST_DATABASE_URL` | banco dos testes de integração; o nome precisa terminar em `_test` |
-| `API_HOST_PORT` | porta da API no host quando roda pelo Compose (padrão 8080); troque se estiver ocupada |
+| `API_HOST_PORT`, `WEB_HOST_PORT` | portas do Compose no host (padrão 8080 e 8088); troque se estiverem ocupadas |
 
 O `.env` nunca vai para o Git nem para as imagens Docker.
 
@@ -81,12 +83,15 @@ npm run user:create -- --email voce@exemplo.com --name "Seu nome"
 
 ## 4. Colocar no ar: opção A, desenvolvimento local
 
-Dois terminais, a partir da raiz do projeto:
+Três terminais, a partir da raiz do projeto:
 
 ```bash
 cd api && npm run dev        # terminal 1: API em http://localhost:<PORT>, reinicia ao salvar
 cd api && npm run worker     # terminal 2: publica os eventos do outbox (opcional)
+cd web && npm run dev        # terminal 3: painel em http://localhost:5173
 ```
+
+O painel chama `/api/...` e o Vite repassa para a API na porta `PORT` do `.env`, sem o prefixo `/api`.
 
 Conferindo:
 
@@ -99,18 +104,19 @@ Para parar, use `Ctrl+C` em cada terminal.
 
 ## 5. Colocar no ar: opção B, tudo no Docker Compose
 
-Sobe banco, API e worker, como em uma demonstração. Os comandos rodam na raiz do projeto, onde fica o `compose.yaml`:
+Sobe banco, API, worker e painel (nginx), como em uma demonstração. Os comandos rodam na raiz do projeto, onde fica o `compose.yaml`:
 
 ```bash
 docker compose up -d postgres
 docker compose build
 docker compose run --rm api node src/scripts/migrate.mjs
 docker compose run --rm api node dist/src/scripts/create-user.js --email voce@exemplo.com --name "Seu nome"
-docker compose up -d api worker
+docker compose up -d api worker web
 docker compose ps
 ```
 
-- API: `http://localhost:8080` (ou o `API_HOST_PORT` do `.env`)
+- Painel: **http://localhost:8088**
+- API direta: `http://localhost:8080` (ou o `API_HOST_PORT` do `.env`)
 
 Dentro do Compose, a API fala com o banco pelo nome `postgres`, porta 5432. Tudo é publicado só em `127.0.0.1`, nunca na rede.
 
@@ -127,6 +133,20 @@ docker compose down                   # remover containers mantendo os volumes
 Se a API e o Compose forem usados ao mesmo tempo, as portas conflitam. Use uma opção de cada vez.
 
 ## 6. Testar a aplicação
+
+### Pelo painel (roteiro de 10 minutos)
+
+Abra o painel (`http://localhost:5173` na opção A ou `http://localhost:8088` na opção B) e entre com a conta criada.
+
+1. **Produtos**: cadastre `CUBO-AZUL`, "Cubo infinito azul", R$ 15,00. Tente cadastrar o mesmo SKU de novo: o painel explica o conflito.
+2. **Produtos → Ajustar estoque**: SKU `CUBO-AZUL`, quantidade `1`, motivo "Saldo inicial". A tabela mostra físico 1 e disponível 1.
+3. **Materiais**: cadastre PLA Azul e registre `+50` gramas. Na receita, defina 30 g por unidade de `CUBO-AZUL`.
+4. **Pedidos**: crie um pedido com 1 × `CUBO-AZUL` e depois outro com 2 × `CUBO-AZUL`. O primeiro fica **Reservado**; o segundo fica **Aguardando estoque** e gera produção.
+5. **Fila de produção**: o job aparece **bloqueado por falta de cor** (precisa de 60 g, há 50 g). Em Materiais, registre `+20` g, volte e clique em **Iniciar impressão** e depois em **Concluir**. O segundo pedido passa a **Reservado**.
+6. **Expedição**: **Marcar como pronto** → **Etiqueta impressa** → **Expedir**. O estoque físico baixa.
+7. **Pedidos → Detalhes** de um pedido ainda reservado: cancele-o. A reserva é liberada e o histórico registra o motivo.
+8. **Precificação**: em **Configurar custos**, preencha energia, impressora, valor da sua hora, falhas e imposto, e as tarifas de cada canal. Em **Materiais**, informe o preço por kg do PLA Azul. Escolha `CUBO-AZUL` na calculadora, informe 150 min de impressão e 20 min de mão de obra e veja o custo e o preço sugerido por canal; **Usar este preço** atualiza o produto.
+9. **Integrações**: **Sincronizar pedidos simulados**. Aparecem pendências de SKU (`SIM-...`). Mapeie cada uma para um produto; os pedidos pendentes são reprocessados. Sincronize de novo: nada é duplicado.
 
 ### Pela API com curl
 
@@ -184,11 +204,12 @@ cd api
 npm test                     # regras puras (estoque, pedidos, fila, validação, conector), sem banco
 npm run test:integration     # PostgreSQL real: concorrência, idempotência, produção, importação, worker, login
 npm run typecheck
+cd ../web && npm test && npm run lint && npm run build
 ```
 
 Os testes de integração usam `TEST_DATABASE_URL` e **recriam o schema** desse banco a cada execução. Por isso se recusam a rodar em um banco cujo nome não termine em `_test`. Nunca aponte para o banco real da loja.
 
-O CI (`.github/workflows/ci.yml`) roda tudo isso no GitHub, com um PostgreSQL isolado, e também constrói a imagem Docker da API.
+O CI (`.github/workflows/ci.yml`) roda tudo isso no GitHub, com um PostgreSQL isolado, e também constrói as imagens Docker.
 
 ## Backup
 
@@ -207,7 +228,8 @@ api/                backend: projeto Node próprio (package.json, tsconfig, Dock
   src/worker.ts     worker do outbox
   migrations/       SQL versionado (001…009)
   test/             testes unitários (test/*.test.ts) e de integração (test/integration/)
-compose.yaml        postgres, api e worker
+web/                frontend: painel React (Vite) + Dockerfile e nginx.conf
+compose.yaml        postgres, api, worker e web
 .env                configuração local compartilhada (a partir do .env.example)
 docs/               arquitetura e contratos da API
 ```
@@ -220,8 +242,9 @@ docs/               arquitetura e contratos da API
 | `SESSION_SECRET deve ter ao menos 32 caracteres` | defina o segredo no `.env` |
 | Conexão recusada no banco | `npm run db:up` e `docker compose ps`; porta local 5434 |
 | `relation ... does not exist` | `npm run migrate` no banco certo |
-| `address already in use` | outra aplicação usa a porta: troque `PORT` ou `API_HOST_PORT` no `.env` |
-| 403 em toda escrita | o token CSRF mudou (novo login ou sessão expirada): peça um novo em `/auth/csrf` ou faça login de novo |
+| `address already in use` | outra aplicação usa a porta: troque `PORT` ou `API_HOST_PORT`/`WEB_HOST_PORT` no `.env` |
+| Painel abre, mas a API falha | API no ar? O proxy do Vite usa a `PORT` do `.env`; no Compose, `docker compose logs web api` |
+| 403 em toda escrita | o token CSRF mudou (novo login ou sessão expirada): recarregue a página |
 
 ## Limitações
 

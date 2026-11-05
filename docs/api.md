@@ -1,6 +1,6 @@
 # Contratos da API
 
-Base local: `http://localhost:8080` (a `PORT` do `.env`).
+Base local: `http://localhost:8080`. No painel, as chamadas passam pelo proxy `/api` (`/api/products` → `/products`).
 
 IDs são UUID. Preços são inteiros em centavos (BRL). Gramas são texto decimal com até 3 casas (`"12.5"`). Datas seguem ISO 8601 com fuso. Listagens aceitam `page` (a partir de 1) e `pageSize` (1–100) e respondem `{ items, page, pageSize, total }`.
 
