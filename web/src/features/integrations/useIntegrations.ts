@@ -1,20 +1,21 @@
 import { useState } from 'react'
-import { integrationsApi, productsApi } from '../../api/endpoints.ts'
-import type { PendingSku, SyncResult } from '../../api/types.ts'
+import { integrationsApi, outboxApi } from '../../api/endpoints.ts'
+import type { DeadEvent, PendingSku, SyncResult } from '../../api/types.ts'
 import { useAction } from '../../hooks/useAction.ts'
 import { useResource } from '../../hooks/useResource.ts'
 
-/** Simulador, pendências de SKU e erros de integração. */
+/** Simulador, pendências de SKU, erros de integração e eventos de saída com falha. */
 export function useIntegrations() {
   const pending = useResource(integrationsApi.pendingSkus, 'pending-skus')
   const errors = useResource(integrationsApi.errors, 'integration-errors')
-  const products = useResource(() => productsApi.list({ pageSize: 100, active: true }), 'active-products')
+  const dead = useResource(outboxApi.dead, 'outbox-dead')
   const [lastSync, setLastSync] = useState<SyncResult | null>(null)
   const action = useAction()
 
   const refresh = () => {
     pending.reload()
     errors.reload()
+    dead.reload()
   }
 
   async function sync() {
@@ -22,7 +23,12 @@ export function useIntegrations() {
     if (done) refresh()
   }
 
-  return { pending, errors, products, lastSync, sync, refresh, action }
+  async function retryDead(event: DeadEvent) {
+    const done = await action.run(() => outboxApi.retry(event.id), `Evento ${event.topic} devolvido à fila de publicação.`)
+    if (done) dead.reload()
+  }
+
+  return { pending, errors, dead, lastSync, sync, retryDead, refresh, action }
 }
 
 /** Mapeia um SKU externo pendente para um produto do catálogo. */

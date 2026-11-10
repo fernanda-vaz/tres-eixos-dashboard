@@ -17,7 +17,7 @@ const STATUS_FILTERS = [{ value: '', label: 'Em aberto' }, ...optionsFrom(JOB_ST
 
 export function ProductionPage() {
   const queue = useProductionQueue()
-  const [colorText, setColorText] = useState('')
+  const [colorText, setColorText] = useState(queue.color)
 
   return (
     <>

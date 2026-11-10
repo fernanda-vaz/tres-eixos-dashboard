@@ -16,14 +16,13 @@ import { useOrders } from './useOrders.ts'
 const STATUS_FILTERS = [{ value: '', label: 'Todos' }, ...optionsFrom(ORDER_STATUS)]
 
 export function OrdersPage() {
-  const { orders, setPage, status, setStatus } = useOrders()
+  const { orders, setPage, status, setStatus, selectedId, open, close } = useOrders()
   const [creating, setCreating] = useState(false)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   function openCreated(orderId: string) {
     setCreating(false)
     orders.reload()
-    setSelectedId(orderId)
+    open(orderId)
   }
 
   return (
@@ -40,7 +39,7 @@ export function OrdersPage() {
         <ResourceView resource={orders} isEmpty={(page) => page.items.length === 0} empty="Nenhum pedido nesta situação." emptyIcon="cart">
           {(page) => (
             <>
-              <OrdersTable orders={page.items} selectedId={selectedId} onOpen={setSelectedId} />
+              <OrdersTable orders={page.items} selectedId={selectedId} onOpen={open} />
               <Pager page={page.page} pageSize={page.pageSize} total={page.total} onChange={setPage} />
             </>
           )}
@@ -49,7 +48,7 @@ export function OrdersPage() {
       <Drawer title="Novo pedido manual" open={creating} onClose={() => setCreating(false)}>
         <OrderForm onCreated={openCreated} />
       </Drawer>
-      <Drawer title="Detalhes do pedido" open={selectedId !== null} onClose={() => setSelectedId(null)}>
+      <Drawer title="Detalhes do pedido" open={selectedId !== null} onClose={close}>
         {selectedId && <OrderDetail orderId={selectedId} onChanged={orders.reload} />}
       </Drawer>
     </>

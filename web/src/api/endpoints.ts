@@ -1,5 +1,7 @@
 import { query, request, setCsrfToken } from './client.ts'
 import type {
+  DashboardSummary,
+  DeadEvent,
   IntegrationError,
   InventoryItem,
   JobStatus,
@@ -58,13 +60,15 @@ export const authApi = {
 export const productsApi = {
   list: (params: Paging & { search?: string; active?: boolean } = {}) =>
     request<Page<Product>>(`/products${query(params)}`),
+  /** SKU exato (a API normaliza para maiúsculas); 404 se não existir. */
+  bySku: (sku: string) => request<Product>(`/products/by-sku/${encodeURIComponent(sku)}`),
   create: (product: NewProduct) => request<Product>('/products', { method: 'POST', body: product }),
   update: (id: string, patch: Partial<Pick<Product, 'name' | 'priceCents' | 'active'>>) =>
     request<Product>(`/products/${id}`, { method: 'PATCH', body: patch }),
 }
 
 export const inventoryApi = {
-  list: (params: Paging & { search?: string } = {}) => request<Page<InventoryItem>>(`/inventory${query(params)}`),
+  list: (params: Paging & { search?: string; active?: boolean } = {}) => request<Page<InventoryItem>>(`/inventory${query(params)}`),
   adjust: (input: { productId: string; delta: number; reason: string }, idempotencyKey: string) =>
     request<StockLevel>('/inventory/adjustments', {
       method: 'POST',
@@ -120,6 +124,16 @@ export const integrationsApi = {
   errors: () => request<IntegrationError[]>('/integrations/errors'),
   mapSku: (input: { channelId: string; externalSku: string; productId: string }) =>
     request<{ ordersUpdated: number }>('/integrations/sku-mappings', { method: 'PUT', body: input }),
+}
+
+export const dashboardApi = {
+  /** Tudo que a visão geral mostra, em uma requisição. */
+  summary: () => request<DashboardSummary>('/dashboard/summary'),
+}
+
+export const outboxApi = {
+  dead: () => request<DeadEvent[]>('/outbox/dead'),
+  retry: (id: string) => request<DeadEvent>(`/outbox/${id}/retry`, { method: 'POST' }),
 }
 
 export const pricingApi = {

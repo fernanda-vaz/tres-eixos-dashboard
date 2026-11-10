@@ -4,7 +4,6 @@ import { Button } from '../../components/ui/Button.tsx'
 import { Card } from '../../components/ui/Card.tsx'
 import { Drawer } from '../../components/ui/Drawer.tsx'
 import { EmptyState } from '../../components/ui/EmptyState.tsx'
-import { SelectField } from '../../components/ui/Field.tsx'
 import { Notice } from '../../components/ui/Notice.tsx'
 import { PageHeader } from '../../components/ui/PageHeader.tsx'
 import { Pager } from '../../components/ui/Pager.tsx'
@@ -14,6 +13,7 @@ import { ChannelsEditor } from './ChannelsEditor.tsx'
 import { CostBreakdownCard } from './CostBreakdownCard.tsx'
 import { CostSheetForm } from './CostSheetForm.tsx'
 import { FilamentMixEditor } from './FilamentMixEditor.tsx'
+import { ProductPicker } from '../products/ProductPicker.tsx'
 import { PricingSettingsForm } from './PricingSettingsForm.tsx'
 import { ProductCostsTable } from './ProductCostsTable.tsx'
 import { useCostCalculator } from './useCostCalculator.ts'
@@ -26,10 +26,6 @@ export function PricingPage() {
   const overview = useProductCosts()
   const calculator = useCostCalculator(overview.costs.reload)
   const [configOpen, setConfigOpen] = useState(false)
-  const productOptions = (calculator.products.data?.items ?? []).map((product) => ({
-    value: product.id,
-    label: `${product.sku} — ${product.name}`,
-  }))
   const pricing = calculator.pricing
 
   function refreshAfterFilamentChange() {
@@ -53,8 +49,7 @@ export function PricingPage() {
       <div className="page-grid">
         <Card title="Calculadora" subtitle="Escolha um produto e preencha a ficha de custo">
           <div className="stack">
-            <SelectField label="Produto" options={productOptions} placeholder="Selecione…"
-              value={calculator.productId} onValueChange={calculator.setProductId} />
+            <ProductPicker label="Produto" value={calculator.productId} onChange={calculator.setProductId} />
             {calculator.loadError && <p className="notice notice-error">{calculator.loadError}</p>}
             <CostSheetForm calculator={calculator} />
           </div>

@@ -1,13 +1,32 @@
 // Cliente HTTP do painel. Nenhum segredo fica no frontend: a sessão é um cookie HttpOnly
 // e o token CSRF vive só na memória desta aba.
 
+/** Códigos estáveis da API (ver docs/api.md, "Erros"). O painel decide por eles, nunca pelo texto. */
+export type ApiErrorCode =
+  | 'validation'
+  | 'unauthorized'
+  | 'forbidden'
+  | 'not_found'
+  | 'conflict'
+  | 'sku_taken'
+  | 'idempotency_key_reused'
+  | 'rate_limited'
+  | 'payload_too_large'
+  | 'invalid_json'
+  | 'csrf'
+  | 'concurrency'
+  | 'internal'
+  | 'network'
+
 export class ApiError extends Error {
   readonly status: number
+  readonly code: ApiErrorCode
   readonly details: unknown
 
-  constructor(status: number, message: string, details?: unknown) {
+  constructor(status: number, code: ApiErrorCode, message: string, details?: unknown) {
     super(message)
     this.status = status
+    this.code = code
     this.details = details
   }
 }
@@ -55,7 +74,7 @@ async function send(path: string, method: string, options: RequestOptions): Prom
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
     })
   } catch {
-    throw new ApiError(0, 'Não foi possível falar com a API. Verifique se o servidor está no ar.')
+    throw new ApiError(0, 'network', 'Não foi possível falar com a API. Verifique se o servidor está no ar.')
   }
 }
 
@@ -67,8 +86,8 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   if (response.ok) return data as T
 
   if (response.status === 401 && !path.startsWith('/auth/')) handleUnauthorized()
-  const body = (data ?? {}) as { error?: string; details?: unknown }
-  throw new ApiError(response.status, body.error ?? `Erro ${response.status}`, body.details)
+  const body = (data ?? {}) as { error?: string; code?: ApiErrorCode; details?: unknown }
+  throw new ApiError(response.status, body.code ?? 'internal', body.error ?? `Erro ${response.status}`, body.details)
 }
 
 /** Monta a query string ignorando valores vazios. */

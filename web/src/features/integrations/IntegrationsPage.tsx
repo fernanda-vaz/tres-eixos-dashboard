@@ -1,4 +1,4 @@
-import type { IntegrationError } from '../../api/types.ts'
+import type { DeadEvent, IntegrationError } from '../../api/types.ts'
 import { Button } from '../../components/ui/Button.tsx'
 import { Card } from '../../components/ui/Card.tsx'
 import { DataTable, type Column } from '../../components/ui/DataTable.tsx'
@@ -18,7 +18,16 @@ const errorColumns: Column<IntegrationError>[] = [
 
 export function IntegrationsPage() {
   const integrations = useIntegrations()
-  const products = integrations.products.data?.items ?? []
+  const deadColumns: Column<DeadEvent>[] = [
+    { key: 'topic', header: 'Evento', render: (row) => <div className="cell-stack"><code>{row.topic}</code><small className="muted">{row.aggregateType} {row.aggregateId.slice(0, 8)}…</small></div> },
+    { key: 'attempts', header: 'Tentativas', align: 'right', render: (row) => row.attempts },
+    { key: 'error', header: 'Último erro', render: (row) => row.lastError },
+    { key: 'when', header: 'Desde', render: (row) => formatDateTime(row.deadAt) },
+    {
+      key: 'retry', header: 'Ações', hideHeader: true,
+      render: (row) => <Button size="sm" icon="refresh" disabled={integrations.action.busy} onClick={() => integrations.retryDead(row)}>Tentar de novo</Button>,
+    },
+  ]
 
   return (
     <>
@@ -39,7 +48,7 @@ export function IntegrationsPage() {
             {(list) => (
               <ul className="mapping-list">
                 {list.map((sku) => (
-                  <SkuMappingRow key={`${sku.channelId}-${sku.externalSku}`} sku={sku} products={products} onMapped={integrations.refresh} />
+                  <SkuMappingRow key={`${sku.channelId}-${sku.externalSku}`} sku={sku} onMapped={integrations.refresh} />
                 ))}
               </ul>
             )}
@@ -48,6 +57,12 @@ export function IntegrationsPage() {
         <Card title="Erros de integração" actions={<Button size="sm" variant="ghost" icon="refresh" onClick={integrations.errors.reload}>Atualizar</Button>}>
           <ResourceView resource={integrations.errors} isEmpty={(list) => list.length === 0} empty="Nenhum erro de integração." emptyIcon="check">
             {(list) => <DataTable caption="Erros de integração" columns={errorColumns} rows={list} rowKey={(row) => row.eventId} />}
+          </ResourceView>
+        </Card>
+        <Card title="Eventos de saída com falha" subtitle="Esgotaram as tentativas de publicação; os seguintes do mesmo pedido esperam"
+          span={2} actions={<Button size="sm" variant="ghost" icon="refresh" onClick={integrations.dead.reload}>Atualizar</Button>}>
+          <ResourceView resource={integrations.dead} isEmpty={(list) => list.length === 0} empty="Nenhum evento parado." emptyIcon="check">
+            {(list) => <DataTable caption="Eventos de saída com falha" columns={deadColumns} rows={list} rowKey={(row) => row.id} />}
           </ResourceView>
         </Card>
       </div>

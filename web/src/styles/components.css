@@ -273,3 +273,11 @@ a.stat-card:hover { transform: translateY(-2px); }
 .mix-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px; font-size: 0.9rem; }
 .mix-row .form-inline { align-items: flex-end; }
 .price-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+
+/* Seleção com busca (ProductPicker): campo de busca em cima, lista de resultados embaixo. */
+.picker { display: grid; gap: 6px; min-width: 0; }
+.form-inline .picker { min-width: 16rem; }
+
+/* Trecho que falhou ao renderizar (ErrorBoundary). */
+.error-boundary { display: grid; gap: 10px; align-items: start; }
+.error-boundary p { margin: 0; }

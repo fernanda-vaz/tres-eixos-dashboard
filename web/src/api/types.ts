@@ -1,4 +1,5 @@
 // Contratos da API (ver docs/api.md). Datas chegam como texto ISO; dinheiro em centavos; gramas em texto.
+// Mantidos à mão em espelho aos tipos de api/src: ao mudar um campo lá, mude aqui (ver docs/arquitetura.md).
 
 export type Page<T> = { items: T[]; page: number; pageSize: number; total: number }
 
@@ -13,6 +14,7 @@ export type InventoryItem = {
   sku: string
   name: string
   active: boolean
+  priceCents: number
   physical: number
   reserved: number
   available: number
@@ -67,12 +69,13 @@ export type Order = {
   externalStatus: string | null
   orderedAt: string
   shipBy: string | null
+  createdAt: string
   cancelledAt: string | null
   cancelReason: string | null
   totalCents: number
   items: OrderItem[]
   shipment: { readyAt: string | null; labelPrintedAt: string | null; dispatchedAt: string | null } | null
-  productionJobs: { id: string; status: string; quantity: number }[]
+  productionJobs: { id: string; orderItemId: string | null; status: string; quantity: number }[]
   history: { fromStatus: string | null; toStatus: string; reason: string; createdAt: string }[]
 }
 
@@ -100,26 +103,56 @@ export type ProductionJob = {
   priority: number
   priorityReason: string | null
   holdReason: string | null
+  estimatedMinutes: number | null
   product: { id: string; sku: string; name: string }
   order: { id: string; externalOrderId: string; status: string; shipBy: string | null; orderedAt: string } | null
   materials: MaterialNeed[]
   blockedBy: MaterialNeed[]
   createdAt: string
+  startedAt: string | null
+  completedAt: string | null
 }
 
 export type PendingSku = { channelId: string; externalSku: string; pendingOrders: number; firstSeenAt: string }
 
-export type IntegrationError = { eventId: string; attempts: number; lastError: string | null; receivedAt: string }
+export type IntegrationError = { eventId: string; attempts: number; lastError: string | null; receivedAt: string; payload: unknown }
+
+export type ImportOutcome = 'created' | 'updated' | 'unchanged' | 'duplicate' | 'ignored' | 'failed'
 
 export type SyncResult = {
   status: 'completed' | 'interrupted'
+  cursor: string | null
   created: number
   updated: number
   unchanged: number
   duplicate: number
   ignored: number
   failed: number
+  results: { externalOrderId: string; outcome: ImportOutcome }[]
   error?: string
+}
+
+/** Evento do outbox que esgotou as tentativas de publicação. */
+export type DeadEvent = {
+  id: string
+  topic: string
+  aggregateType: 'order' | 'production_job'
+  aggregateId: string
+  payload: unknown
+  attempts: number
+  lastError: string | null
+  createdAt: string
+  deadAt: string | null
+}
+
+// ---------- Visão geral ----------
+
+export type DashboardSummary = {
+  orders: { byStatus: Record<OrderStatus, number>; overdue: number }
+  production: { queued: number; printing: number; onHold: number; blocked: number; pieces: number }
+  upcomingShipments: OrderSummary[]
+  lowStock: InventoryItem[]
+  lowFilament: Material[]
 }
 
 // ---------- Precificação ----------

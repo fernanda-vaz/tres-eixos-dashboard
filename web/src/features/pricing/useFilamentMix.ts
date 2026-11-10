@@ -3,6 +3,7 @@ import { materialsApi } from '../../api/endpoints.ts'
 import type { Material } from '../../api/types.ts'
 import { useAction } from '../../hooks/useAction.ts'
 import { useResource } from '../../hooks/useResource.ts'
+import { collectAll } from '../../lib/pages.ts'
 import { formatCents } from '../../lib/format.ts'
 import { centsToInput, gramsToInput, parseGrams, parseReaisToCents } from '../../lib/parse.ts'
 import type { FilamentLine } from './filament-mix.ts'
@@ -12,7 +13,7 @@ import type { FilamentLine } from './filament-mix.ts'
  * filamento. A receita é a mesma usada na produção para reservar filamento.
  */
 export function useFilamentMix(productId: string, onChanged: () => void) {
-  const materials = useResource(() => materialsApi.list({ pageSize: 100 }), 'mix-materials')
+  const materials = useResource(() => collectAll((paging) => materialsApi.list(paging)), 'mix-materials')
   const action = useAction()
 
   async function perform(work: () => Promise<unknown>, success: string) {

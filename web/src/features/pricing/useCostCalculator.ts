@@ -14,7 +14,6 @@ const PREVIEW_DELAY_MS = 350
  * é editada, salva a ficha e aplica um preço sugerido ao produto.
  */
 export function useCostCalculator(onChanged: () => void) {
-  const products = useResource(() => productsApi.list({ pageSize: 100, active: true }), 'pricing-products')
   const [productId, setProductId] = useState('')
   const [version, setVersion] = useState(0)
   // Muda quando filamentos/preços mudam: recalcula sem descartar a ficha em edição.
@@ -69,7 +68,6 @@ export function useCostCalculator(onChanged: () => void) {
   }
 
   return {
-    products,
     productId,
     setProductId,
     form,

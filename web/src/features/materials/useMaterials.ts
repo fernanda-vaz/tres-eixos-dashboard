@@ -1,14 +1,25 @@
 import { useState } from 'react'
-import { materialsApi, productsApi } from '../../api/endpoints.ts'
+import { materialsApi } from '../../api/endpoints.ts'
 import { useAction } from '../../hooks/useAction.ts'
 import { useResource } from '../../hooks/useResource.ts'
+import { collectAll } from '../../lib/pages.ts'
 import { centsToInput, parseGrams, parseReaisToCents } from '../../lib/parse.ts'
 
-/** Filamentos cadastrados (até 100) e produtos ativos, usados pela tela e pelo editor de receita. */
+const PAGE_SIZE = 20
+
+/** Filamentos cadastrados, paginados, para a tabela. */
 export function useMaterials() {
-  const materials = useResource(() => materialsApi.list({ pageSize: 100 }), 'materials')
-  const products = useResource(() => productsApi.list({ pageSize: 100, active: true }), 'active-products')
-  return { materials, products }
+  const [page, setPage] = useState(1)
+  const materials = useResource(() => materialsApi.list({ page, pageSize: PAGE_SIZE }), `materials|${page}`)
+  return { materials, setPage }
+}
+
+/**
+ * Todos os filamentos, para seleções (receita, cores da peça). Percorre as páginas em vez de
+ * assumir que cabem em uma; `truncated` avisa se o cadastro passou do teto.
+ */
+export function useAllMaterials(key = 'all-materials') {
+  return useResource(() => collectAll((paging) => materialsApi.list(paging)), key)
 }
 
 export function useMaterialForm(onCreated: () => void) {

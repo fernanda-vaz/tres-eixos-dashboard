@@ -2,25 +2,46 @@ import { useState } from 'react'
 import { ordersApi } from '../../api/endpoints.ts'
 import type { OrderStatus } from '../../api/types.ts'
 import { useAction } from '../../hooks/useAction.ts'
+import { useHashRoute } from '../../hooks/useHashRoute.ts'
 import { useResource } from '../../hooks/useResource.ts'
+import { pageFromQuery } from '../../lib/hash.ts'
 import { newIdempotencyKey } from '../../lib/idempotency.ts'
+import { ORDER_STATUS } from '../../lib/labels.ts'
 import { localInputToIso, normalizeSku } from '../../lib/parse.ts'
 
-/** Lista paginada de pedidos com filtro de situação ('' = todas). */
+const PAGE_SIZE = 20
+
+function statusFromQuery(value: string | undefined): OrderStatus | '' {
+  return value && value in ORDER_STATUS ? (value as OrderStatus) : ''
+}
+
+/**
+ * Lista paginada de pedidos. Filtro, página e pedido aberto vivem no hash da URL
+ * (#/pedidos/<id>?status=ready&page=2): recarregar ou compartilhar o link preserva o contexto.
+ */
 export function useOrders() {
-  const [page, setPage] = useState(1)
-  const [status, setStatusState] = useState<OrderStatus | ''>('')
+  const { route, navigate } = useHashRoute()
+  const status = statusFromQuery(route.query.status)
+  const page = pageFromQuery(route.query)
+  const selectedId = route.id
   const orders = useResource(
-    () => ordersApi.list({ page, pageSize: 20, status: status || undefined }),
+    () => ordersApi.list({ page, pageSize: PAGE_SIZE, status: status || undefined }),
     `${page}|${status}`,
   )
 
-  function setStatus(value: OrderStatus | '') {
-    setPage(1)
-    setStatusState(value)
-  }
+  const go = (next: { status?: OrderStatus | ''; page?: number; id?: string | null }) =>
+    navigate({ path: 'pedidos', id: next.id === undefined ? selectedId : next.id, query: { status: next.status ?? status, page: next.page ?? page } })
 
-  return { orders, page, setPage, status, setStatus }
+  return {
+    orders,
+    page,
+    setPage: (value: number) => go({ page: value }),
+    status,
+    setStatus: (value: OrderStatus | '') => go({ status: value, page: 1 }),
+    selectedId,
+    open: (id: string) => go({ id }),
+    close: () => go({ id: null }),
+  }
 }
 
 export type ItemRow = { sku: string; quantity: string }
