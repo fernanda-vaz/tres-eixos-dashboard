@@ -39,14 +39,15 @@ Não há microserviços: o backend é um **monólito modular**. Isso mantém as 
 - React 19 + Vite no frontend.
 - Docker Compose para banco, API, worker e nginx.
 - Test runner nativo do Node, sem framework de testes adicional. A API carrega TypeScript com `tsx`; o painel depende do type stripping nativo do Node 24 (`node --test` direto nos `.ts`), então os testes do web só rodam na versão do `.nvmrc`.
-- `oxlint` para lint do painel; `tsc` para typecheck nos dois projetos.
+- `oxlint` para lint do painel; `tsc` para typecheck nos três workspaces.
+- Workspaces npm na raiz (`packages/contracts`, `api`, `web`): um `package-lock.json`, uma versão de TypeScript (5.9: a 7 ainda não expõe a API JavaScript que o `dependency-cruiser` usa) e scripts que percorrem os três (`npm run typecheck`, `npm test`, `npm run check`).
 
 ### Desenvolvimento local
 
 ```bash
 cp .env.example .env
-cd api && npm ci && npm run db:up && npm run migrate
-cd ../web && npm ci
+npm ci
+cd api && npm run db:up && npm run migrate
 ```
 
 Depois, em terminais separados:
@@ -196,11 +197,12 @@ Duas famílias de tabelas crescem para sempre e precisam de atenção distinta:
 | `api/src/worker.ts` | Escolhe publisher de log ou webhook, inicia o laço e, a cada volta, toca o heartbeat (healthcheck do Compose), registra as métricas do outbox por minuto e roda a retenção por hora. |
 | `api/src/scripts/migrate.mjs` | Lê migrations em ordem, cria/consulta `schema_migrations` e aplica somente as pendentes. |
 | `api/src/scripts/create-user.ts` | Cria a conta inicial pelo terminal, pede senha sem eco e grava apenas o hash. Não existe cadastro público. |
-| `api/Dockerfile` | Faz build TypeScript e gera a imagem executável da API/worker. |
-| `api/.dockerignore` | Evita enviar dependências, artefatos e arquivos locais desnecessários para o contexto do build. |
+| `api/Dockerfile` | Faz build TypeScript e gera a imagem executável da API/worker. O contexto é a raiz do repositório (`docker build -f api/Dockerfile .`), para enxergar o lockfile e `packages/contracts`; o estágio final instala só as dependências de produção da API. |
+| `.dockerignore` (raiz) | Evita enviar dependências, artefatos e arquivos locais desnecessários para o contexto do build. |
 | `api/tsconfig.json` | Configura compilação TypeScript do backend. |
-| `api/package.json` | Define dependências e scripts de desenvolvimento, build, migração, testes e worker. |
-| `api/package-lock.json` | Fixa as versões instaladas para builds reproduzíveis. |
+| `api/package.json` | Define dependências e scripts de desenvolvimento, build, migração, testes e worker. As versões ficam fixadas no `package-lock.json` da raiz. |
+| `api/test/contracts.types.ts` | Prova de contrato em tempo de compilação: cada tipo que a API devolve, depois de virar JSON, tem de ser igual ao tipo publicado em `packages/contracts`. Falha no `typecheck` apontando o tipo que divergiu. |
+| `packages/contracts/index.d.ts` | Os contratos HTTP (tipos do que trafega): importados pelo painel e provados pela API. Só tipos, sem código em tempo de execução. |
 
 ## 6. Módulo de catálogo
 
@@ -367,7 +369,7 @@ A regra principal é: componentes `.tsx` apresentam e coordenam a tela; hooks `.
 | `web/src/main.tsx` | Ponto de entrada React; monta `App` no DOM. |
 | `web/src/App.tsx` | Decide entre login, loading e painel autenticado usando `useSession`. |
 | `web/src/app/routes.ts` | Catálogo central de rotas do menu e resolução por hash. |
-| `web/src/api/types.ts` | Tipos TypeScript que espelham os contratos da API. |
+| `@tres-eixos/contracts` | Os tipos do contrato vêm do pacote `packages/contracts`, o mesmo que a API prova cumprir; não há mais espelho manual. |
 | `web/src/api/client.ts` | Wrapper de `fetch`, cookie, CSRF, parsing de erro, tratamento de 401 e query string. |
 | `web/src/api/endpoints.ts` | Uma função por endpoint; é a camada que traduz intenção da feature em HTTP. |
 
@@ -433,8 +435,7 @@ Centralizar esses elementos evita que cada feature invente seus próprios estado
 | `web/tsconfig.json` | Configuração base de TypeScript do frontend. |
 | `web/tsconfig.app.json` | Opções de TypeScript para o código da aplicação. |
 | `web/tsconfig.node.json` | Opções de TypeScript para arquivos de configuração executados no Node, como o Vite. |
-| `web/package.json` | Scripts de dev, build, lint e testes, além das dependências React/Vite. |
-| `web/package-lock.json` | Fixa as versões do frontend. |
+| `web/package.json` | Scripts de dev, build, typecheck, lint e testes, além das dependências React/Vite (versões fixadas no `package-lock.json` da raiz). |
 | `web/Dockerfile` | Compila o painel e cria a imagem final de entrega estática. |
 | `web/nginx.conf` | Serve o build, envia os cabeçalhos de segurança do HTML (`X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` e uma `Content-Security-Policy` sem inline), aceita corpos até 256 kB, repassa `X-Request-Id` e encaminha `/api/*` para o serviço `api` dentro do Compose. `Strict-Transport-Security` fica comentado até existir TLS. |
 
@@ -548,8 +549,8 @@ Só há testes de funções puras no painel (inclusive `lib/hash.test.ts`, do ro
 
 Limites técnicos conhecidos (o histórico do que foi avaliado e aplicado está em `docs/avaliacao-arquitetura.md`):
 
-- Os tipos do contrato continuam duplicados à mão em `web/src/api/types.ts` (hoje em dia com o backend); o CI não compara os dois. A evolução prevista é um pacote de contratos compartilhado via workspaces npm.
-- Não há teste de contrato nem e2e no navegador: o roteiro do README segue manual.
+- O contrato é provado por tipos (`api/test/contracts.types.ts`), não por requisições: um campo que a API preenche com valor errado em tempo de execução não é pego por ele, só por testes de integração.
+- Não há e2e no navegador: o roteiro do README segue manual.
 - O `compose.yaml` não tem TLS: serve para demonstração local. Para expor na internet, terminador HTTPS na frente do `web`, `COOKIE_SECURE=true` e HSTS no nginx.
 - Uma única conta de dona; não há papéis nem permissões por equipe.
 - As métricas de `GET /metrics` são por instância e em memória: zeram a cada reinício e não são agregadas por um coletor.
@@ -564,7 +565,7 @@ Ao adicionar uma funcionalidade de negócio:
 4. implemente SQL no repository;
 5. orquestre transação, locks, histórico e outbox no service (se a mudança cruza pedidos, estoque e produção, ela passa por `fulfillment/allocation.ts`; respeite a ordem de locks pedido → jobs → estoque → materiais e as regras de dependência do `dependency-cruiser`);
 6. exponha a rota;
-7. atualize `api/types.ts` e `api/endpoints.ts`;
+7. altere `packages/contracts/index.d.ts` (o `typecheck` da API aponta o tipo que divergiu) e `web/src/api/endpoints.ts`;
 8. crie hook e componentes na feature correspondente;
 9. adicione testes puros e de integração quando houver concorrência ou banco;
 10. atualize `docs/api.md`, `docs/arquitetura.md` e este tutorial se o contrato ou a arquitetura mudarem.

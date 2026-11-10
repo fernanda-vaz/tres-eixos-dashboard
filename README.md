@@ -40,9 +40,10 @@ Node.js 24, TypeScript, Express 5, PostgreSQL 16, React 19 + Vite, Docker Compos
 
 ```bash
 cp .env.example .env
-cd api && npm ci && cd ..
-cd web && npm ci && cd ..
+npm ci
 ```
+
+O repositório é um workspace npm: um único `npm ci` na raiz instala os contratos (`packages/contracts`), a API e o painel, com um só `package-lock.json` e uma só versão de TypeScript. Os scripts de cada projeto rodam com `-w` (`npm run dev -w api`) ou entrando na pasta (`cd api && npm run dev`).
 
 O `.env` fica na raiz porque é compartilhado pela API, pelo proxy do Vite e pelo Docker Compose. Edite o `.env`:
 
@@ -213,16 +214,21 @@ Também vale testar os erros esperados:
 
 ### Testes automatizados
 
+Na raiz, cada comando percorre os workspaces (contratos, API e painel):
+
 ```bash
-cd api
-npm test                     # regras puras (estoque, pedidos, fila, validação, conector, outbox), sem banco
-npm run test:integration     # PostgreSQL real: concorrência, idempotência, produção, importação, worker, login, dead-letter, retenção
-npm run typecheck
-npm run deps:check           # fronteiras entre módulos (dependency-cruiser): sem ciclos, núcleo não importa pedidos…
-cd ../web && npm test && npm run lint && npm run build
+npm run typecheck            # tsc nos três; na API inclui a prova de contrato (api/test/contracts.types.ts)
+npm run lint                 # oxlint no painel
+npm run deps:check           # fronteiras entre módulos da API (dependency-cruiser): sem ciclos, núcleo não importa pedidos…
+npm test                     # API: regras puras, sem banco; painel: funções puras
+npm run test:integration     # API com PostgreSQL real: concorrência, idempotência, produção, importação, worker, login, dead-letter, retenção
+npm run build
+npm run check                # typecheck + lint + deps:check + test, de uma vez
 ```
 
-Os dois projetos declaram `"engines": { "node": ">=24" }`: os testes do painel usam o type stripping nativo do Node e falham com versões anteriores (`nvm use`).
+Para um projeto só: `npm test -w api`, `npm run lint -w web`, ou `cd api && npm test`.
+
+Os `package.json` declaram `"engines": { "node": ">=24" }`: os testes do painel usam o type stripping nativo do Node e falham com versões anteriores (`nvm use`).
 
 Os testes de integração usam `TEST_DATABASE_URL` e **recriam o schema** desse banco a cada execução. Por isso se recusam a rodar em um banco cujo nome não termine em `_test`. Nunca aponte para o banco real da loja.
 
@@ -245,14 +251,16 @@ Para um backup diário automático, uma linha no `crontab -e` do host:
 ## Estrutura
 
 ```
-api/                backend: projeto Node próprio (package.json, tsconfig, Dockerfile)
+package.json        workspaces npm (packages/contracts, api, web): um lockfile, uma versão de TypeScript, scripts da raiz
+packages/contracts/ tipos do que trafega entre API e painel (index.d.ts); a API prova em api/test/contracts.types.ts que cumpre o contrato
+api/                backend: projeto Node próprio (package.json, tsconfig, Dockerfile com contexto na raiz)
   src/              API (módulos catalog, inventory, orders, fulfillment, production, integrations, dashboard, security, pricing)
   src/worker.ts     worker do outbox (publicação, métricas, retenção)
   migrations/       SQL versionado (001…010)
   test/             testes unitários (test/*.test.ts) e de integração (test/integration/)
 web/                frontend: painel React (Vite) + Dockerfile e nginx.conf (cabeçalhos de segurança, CSP, proxy /api)
 scripts/            backup-db.sh
-compose.yaml        postgres, api, worker e web
+compose.yaml        postgres, api, worker e web (as imagens são construídas a partir da raiz: `docker build -f api/Dockerfile .`)
 .env                configuração local compartilhada (a partir do .env.example)
 docs/               arquitetura, contratos da API, tutorial e avaliação de arquitetura
 ```

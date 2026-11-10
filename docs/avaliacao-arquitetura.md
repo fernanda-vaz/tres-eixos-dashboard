@@ -244,7 +244,7 @@ Ordem de prioridade do orquestrador: estabilidade → dados → fronteiras → d
 | Característica | Medida | Alvo |
 |---|---|---|
 | Fronteiras | `dependency-cruiser` no CI | 0 violações |
-| Contrato único | `grep -c "export type" web/src/api/types.ts` | 0 (tipos vêm de `contracts`) |
+| Contrato único | `web/src/api/types.ts` não existe; `api/test/contracts.types.ts` entra no `typecheck` | sim |
 | Limites no front | `grep -rc "pageSize: 100" web/src` | 0 |
 | Custo do dashboard | requisições na carga inicial (aba Network) | 1 |
 | Testes no CI | job `web` executa `npm test` | sim |
@@ -281,7 +281,7 @@ Tudo verificado com `typecheck`, `deps:check`, 33 testes unitários e 36 de inte
 | 11. Observabilidade mínima | feito (`pino`, `X-Request-Id`, linha por requisição, `GET /metrics`, métricas do worker por minuto, healthcheck do worker por heartbeat) | `logger.ts`, `http/request-log.ts`, `http/metrics.ts`, `worker.ts` |
 | 12. Retenção | feito (hora em hora no worker; limpeza aleatória do limitador de login removida) | `retention.ts` |
 | 13. `requestTimeout`/`headersTimeout` | feito (30 s / 10 s) | `server.ts` |
-| 14. Workspaces npm + pacote `contracts` | **não aplicado**: exige reestruturar Dockerfiles, `cache-dependency-path` do CI e os dois `package-lock.json`; fica como próxima PR. Os tipos do painel foram sincronizados com o backend (campos que faltavam adicionados) | `web/src/api/types.ts` |
+| 14. Workspaces npm + pacote `contracts` | feito em PR própria (2026-11-10): workspaces na raiz com um lockfile e uma versão de TypeScript (5.9: a 7 não expõe a API que o `dependency-cruiser` usa); `packages/contracts/index.d.ts` é importado pelo painel e a API prova, em tempo de compilação, que cada tipo devolvido serializa exatamente para ele (`Date` → texto). Dockerfiles com contexto na raiz; CI com um `npm ci` | `package.json`, `packages/contracts/`, `api/test/contracts.types.ts` |
 | 15. Extrair `fulfillment/` | feito (porta `orders/allocation-port.ts`, aviso `inventory/stock-events.ts`, registro em `app.ts`); os 28 testes de integração originais passaram sem alteração de comportamento | `fulfillment/` |
 | 16. Fitness function de dependência | feito (`dependency-cruiser` no CI: sem ciclos, núcleo não importa pedidos, repositório não importa `http/`, ninguém importa `app.ts`) | `api/.dependency-cruiser.cjs` |
 | 17. Repositórios com `db: Queryable` | feito (todas as funções; `queryPage` também recebe o `db`) | `*-repository.ts` |
@@ -295,5 +295,5 @@ Tudo verificado com `typecheck`, `deps:check`, 33 testes unitários e 36 de inte
 
 Também: `create-user.ts` deixou de usar a API privada do `readline` (lê a senha em modo raw); `gramsToMilli` foi para `grams.ts` (compartilhado por produção e precificação, sem que precificação importe produção); a listagem de estoque passou a trazer `priceCents` e filtrar por `active`, e o painel de Produtos usa só ela (uma requisição por página em vez de produtos + 100 itens de estoque).
 
-Fitness functions da seção 5, medidas agora: `dependency-cruiser` 0 violações; `grep -rc "pageSize: 100" web/src` = 0; dashboard = 1 requisição; CI executa os testes do web; `curl -I` do painel mostra CSP, XFO e nosniff. Pendentes: contrato único (item 14) e e2e (item 19).
+Fitness functions da seção 5, medidas agora: `dependency-cruiser` 0 violações; `grep -rc "pageSize: 100" web/src` = 0; dashboard = 1 requisição; CI executa os testes do web; `curl -I` do painel mostra CSP, XFO e nosniff. Contrato único: feito (item 14, 2026-11-10). Pendente: e2e (item 19).
 

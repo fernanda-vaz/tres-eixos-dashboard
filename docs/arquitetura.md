@@ -77,7 +77,7 @@ React 19 + Vite, sem bibliotecas de estado ou de UI. A regra é: **componentes `
 
 ```
 web/src/
-  api/          client.ts (fetch, CSRF, ApiError com code), endpoints.ts (uma função por rota), types.ts (contratos)
+  api/          client.ts (fetch, CSRF, ApiError com code), endpoints.ts (uma função por rota); os tipos vêm de @tres-eixos/contracts
   lib/          funções puras: format, parse, labels (status → rótulo e tom), charts, errors (mensagem por code),
                 idempotency, hash (rota, item e filtros na URL), pages (percorrer páginas de listas pequenas)
   hooks/        useResource (carga + estados), useAction (escrita sem envio duplo), useSession,
@@ -98,7 +98,8 @@ web/src/
 - Funções puras têm testes com o runner nativo do Node (`cd web && npm test`, exige Node 24; roda no CI).
 - Listas nunca têm teto silencioso: seleções de produto usam busca incremental (`ProductPicker`, 20 resultados e aviso para refinar), filas e tabelas são paginadas, e as poucas listas carregadas inteiras (filamentos) percorrem as páginas e avisam se passarem do limite.
 - Seção, item aberto e filtros ficam no hash da URL (`#/pedidos/<id>?status=ready&page=2`): recarregar ou compartilhar o link preserva o contexto.
-- Os tipos de `api/types.ts` espelham à mão os do backend; o CI não compara os dois. Ao mudar um campo na API, mude aqui no mesmo commit (um pacote de contratos compartilhado é a evolução prevista, ver `docs/avaliacao-arquitetura.md`).
+- Os tipos do contrato vêm de `packages/contracts` (`@tres-eixos/contracts`), compartilhado via workspaces npm. O painel importa direto; a API prova em `api/test/contracts.types.ts` que cada tipo interno, depois de serializado (`Date` → texto ISO), é igual ao do contrato. Mudar um campo de um lado só faz o `typecheck` falhar apontando o tipo. `docs/api.md` é exemplo e explicação, não contrato.
+- Uma única versão de TypeScript (5.9) na raiz: a 7 ainda não expõe a API JavaScript que o `dependency-cruiser` usa para ler os `.ts`.
 
 ## Estoque: dois estoques, unidades diferentes
 

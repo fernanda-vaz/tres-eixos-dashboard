@@ -2,6 +2,8 @@
 
 Base local: `http://localhost:8080`. No painel, as chamadas passam pelo proxy `/api` (`/api/products` → `/products`).
 
+O contrato formal é `packages/contracts/index.d.ts` (tipos do que trafega, importados pelo painel e provados pela API no `typecheck`). Este documento explica e dá exemplos; se divergir do pacote, o pacote vale.
+
 IDs são UUID. Preços são inteiros em centavos (BRL). Gramas são texto decimal com até 3 casas (`"12.5"`). Datas seguem ISO 8601 com fuso. Listagens aceitam `page` (a partir de 1) e `pageSize` (1–100) e respondem `{ items, page, pageSize, total }`.
 
 ## Erros
