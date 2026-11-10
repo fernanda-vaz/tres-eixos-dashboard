@@ -7,7 +7,8 @@
   "workspaces": [
     "packages/contracts",
     "api",
-    "web"
+    "web",
+    "e2e"
   ],
   "scripts": {
     "typecheck": "npm run typecheck --workspaces --if-present",
@@ -16,7 +17,8 @@
     "test:integration": "npm run test:integration -w api",
     "deps:check": "npm run deps:check -w api",
     "build": "npm run build --workspaces --if-present",
-    "check": "npm run typecheck && npm run lint && npm run deps:check && npm test"
+    "check": "npm run typecheck && npm run lint && npm run deps:check && npm test",
+    "e2e": "npm run e2e -w e2e"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",

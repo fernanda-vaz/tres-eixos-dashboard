@@ -1,0 +1,16 @@
+{
+  "name": "@tres-eixos/e2e",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Smoke e2e do painel com Playwright: o roteiro de 10 minutos do README contra a pilha do Compose.",
+  "type": "module",
+  "scripts": {
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "typecheck": "tsc -p tsconfig.json",
+    "browsers": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.0"
+  }
+}
