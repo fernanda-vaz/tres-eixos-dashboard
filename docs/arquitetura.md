@@ -95,7 +95,7 @@ web/src/
 
 - Visual "glass": fundo em degradê claro (lilás → azul-céu → rosa) com brilhos desfocados e painéis translúcidos com `backdrop-filter`. Tema claro fixo, mesmo com o sistema em modo escuro.
 - Cores semânticas via classes `tone-*` (que expõem `--tone`): o mesmo tom serve para badge, gráfico, barra e ícone.
-- Funções puras têm testes com o runner nativo do Node (`cd web && npm test`, exige Node 24; roda no CI).
+- Funções puras têm testes com o runner nativo do Node (`npm test -w web`, exige Node 24; roda no CI). O fluxo inteiro, do navegador ao banco, é coberto pelo smoke e2e (`e2e/`, Playwright) contra a pilha do Compose, no CI e localmente (`scripts/e2e-stack.sh up && npm run e2e`).
 - Listas nunca têm teto silencioso: seleções de produto usam busca incremental (`ProductPicker`, 20 resultados e aviso para refinar), filas e tabelas são paginadas, e as poucas listas carregadas inteiras (filamentos) percorrem as páginas e avisam se passarem do limite.
 - Seção, item aberto e filtros ficam no hash da URL (`#/pedidos/<id>?status=ready&page=2`): recarregar ou compartilhar o link preserva o contexto.
 - Os tipos do contrato vêm de `packages/contracts` (`@tres-eixos/contracts`), compartilhado via workspaces npm. O painel importa direto; a API prova em `api/test/contracts.types.ts` que cada tipo interno, depois de serializado (`Date` → texto ISO), é igual ao do contrato. Mudar um campo de um lado só faz o `typecheck` falhar apontando o tipo. `docs/api.md` é exemplo e explicação, não contrato.

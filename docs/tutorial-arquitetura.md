@@ -78,6 +78,8 @@ Arquivos de operação na raiz:
 | `compose.yaml` | Define rede, volumes, healthcheck, dependências e comandos dos quatro serviços. |
 | `.env.example` | Documenta as variáveis necessárias sem conter segredos reais; a cópia local é `.env`. |
 | `README.md` | Guia operacional: instalação, migrations, criação da conta, execução, testes, backup e troubleshooting. |
+| `scripts/e2e-stack.sh` | Sobe a pilha do Compose pronta para o smoke e2e (migrations, conta de teste, espera o painel) e a derruba. |
+| `.github/workflows/ci.yml` | Jobs `checks` (workspaces), `integration` (PostgreSQL), `docker` (imagens) e `e2e` (Compose + Playwright). |
 | `docs/arquitetura.md` | Referência técnica mais compacta sobre concorrência, estados, segurança e outbox. |
 | `docs/api.md` | Contrato detalhado de rotas, corpos, respostas e erros. |
 | `docs/tutorial-arquitetura.md` | Este tutorial, com visão pedagógica da organização e do papel de cada arquivo. |
@@ -487,7 +489,17 @@ Os testes puros são rápidos e isolam regras matemáticas/estados. Os testes de
 | `lib/format.test.ts` | Formatação de valores. |
 | `lib/parse.test.ts` | Conversão e validação de inputs. |
 
-Só há testes de funções puras no painel (inclusive `lib/hash.test.ts`, do roteamento); componentes e fluxos (hooks que recarregam após uma ação, formulários) dependem do roteiro manual do README. Esses testes exigem Node 24 (com Node 21 todos falham com `ERR_UNKNOWN_FILE_EXTENSION`); os dois `package.json` declaram `engines.node >= 24` e o job `web` do CI roda `lint`, `test` e `build`.
+No painel, os testes unitários cobrem só funções puras (inclusive `lib/hash.test.ts`, do roteamento). Esses testes exigem Node 24 (com Node 21 todos falham com `ERR_UNKNOWN_FILE_EXTENSION`); os `package.json` declaram `engines.node >= 24` e o job `checks` do CI roda `lint`, `test` e `build`.
+
+### Smoke e2e (`e2e/`)
+
+| Arquivo | O que faz |
+|---|---|
+| `e2e/tests/smoke.spec.ts` | O roteiro de 10 minutos do README no Chromium, em 12 passos sequenciais: login, produto (e SKU repetido), ajuste de estoque, material + entrada + receita, dois pedidos (reserva e aguardando estoque), fila bloqueada por cor → imprimir → concluir, expedição, cancelamento, precificação, integrações (sincronizar, mapear, não duplicar), deep link e, por fim, "nenhum erro de JavaScript nem violação de CSP". Cada execução usa um sufixo próprio (`E2E-…`). |
+| `e2e/playwright.config.ts` | Um worker, `baseURL` em `E2E_BASE_URL` (padrão: o nginx do Compose em 8088), trace e screenshot só em falha. |
+| `scripts/e2e-stack.sh` | `up`: sobe a pilha do Compose, aplica migrations, garante a conta `E2E_EMAIL`/`E2E_PASSWORD` (senha via `NEW_PASSWORD`, sem terminal) e espera `/api/ready`; `down`: para api/worker/web. |
+
+Os seletores são os rótulos acessíveis (`getByRole`, `getByLabel`): o teste só passa se a tela continua navegável por leitor de tela. Componentes isolados e hooks continuam sem teste próprio; o e2e cobre o fluxo inteiro, do navegador ao banco.
 
 ## 16. Fluxos importantes de ponta a ponta
 
@@ -550,7 +562,7 @@ Só há testes de funções puras no painel (inclusive `lib/hash.test.ts`, do ro
 Limites técnicos conhecidos (o histórico do que foi avaliado e aplicado está em `docs/avaliacao-arquitetura.md`):
 
 - O contrato é provado por tipos (`api/test/contracts.types.ts`), não por requisições: um campo que a API preenche com valor errado em tempo de execução não é pego por ele, só por testes de integração.
-- Não há e2e no navegador: o roteiro do README segue manual.
+- O e2e cobre o roteiro principal, não variações (erros de rede, sessão expirada, paginação longa); componentes e hooks não têm teste isolado.
 - O `compose.yaml` não tem TLS: serve para demonstração local. Para expor na internet, terminador HTTPS na frente do `web`, `COOKIE_SECURE=true` e HSTS no nginx.
 - Uma única conta de dona; não há papéis nem permissões por equipe.
 - As métricas de `GET /metrics` são por instância e em memória: zeram a cada reinício e não são agregadas por um coletor.

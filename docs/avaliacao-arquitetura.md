@@ -247,7 +247,7 @@ Ordem de prioridade do orquestrador: estabilidade → dados → fronteiras → d
 | Contrato único | `web/src/api/types.ts` não existe; `api/test/contracts.types.ts` entra no `typecheck` | sim |
 | Limites no front | `grep -rc "pageSize: 100" web/src` | 0 |
 | Custo do dashboard | requisições na carga inicial (aba Network) | 1 |
-| Testes no CI | job `web` executa `npm test` | sim |
+| Testes no CI | `npm test` dos workspaces e smoke e2e (job `e2e`) | sim |
 | Steady state | `SELECT count(*) FROM idempotency_keys` após 30 dias | estável, não crescente |
 | Outbox | idade do evento pendente mais antigo | < 15 min; alerta acima de 1 h |
 | Segurança do HTML | `curl -I` no painel mostra CSP, XFO, nosniff | sim |
@@ -286,7 +286,7 @@ Tudo verificado com `typecheck`, `deps:check`, 33 testes unitários e 36 de inte
 | 16. Fitness function de dependência | feito (`dependency-cruiser` no CI: sem ciclos, núcleo não importa pedidos, repositório não importa `http/`, ninguém importa `app.ts`) | `api/.dependency-cruiser.cjs` |
 | 17. Repositórios com `db: Queryable` | feito (todas as funções; `queryPage` também recebe o `db`) | `*-repository.ts` |
 | 18. Deep links | feito (`#/pedidos/<id>?status=&page=`, `#/producao?status=&color=&page=`) | `web/src/lib/hash.ts`, `hooks/useHashRoute.ts` |
-| 19. Smoke e2e com Playwright | **não aplicado**: exige baixar navegadores no CI e um job com o Compose inteiro; a verificação desta rodada foi feita à mão com Chrome headless | — |
+| 19. Smoke e2e com Playwright | feito em PR própria (2026-11-10): workspace `e2e/` com o roteiro do README em 12 passos no Chromium; `scripts/e2e-stack.sh` sobe o Compose, migra, cria a conta e espera o painel; job `e2e` no CI com a pilha inteira no runner (12 passos em ~13 s) | `e2e/`, `scripts/e2e-stack.sh`, `.github/workflows/ci.yml` |
 | 20. TLS + HSTS | **não aplicado** (infra de deploy, fora do repositório); HSTS pronto para descomentar no nginx; instruções no README | `web/nginx.conf`, README |
 | 21. HMAC no webhook e `aggregate_type` | feito (`OUTBOX_WEBHOOK_SECRET`, `X-Signature-256`, coluna com backfill) | `outbox/publishers.ts`, `migrations/010` |
 | 22. scrypt mais forte com rehash | feito (`N=2^15, r=8, p=3`, ~32 MB por hash para suportar logins em paralelo; rehash transparente no login) | `security/password.ts`, `auth-service.ts` |
@@ -295,5 +295,5 @@ Tudo verificado com `typecheck`, `deps:check`, 33 testes unitários e 36 de inte
 
 Também: `create-user.ts` deixou de usar a API privada do `readline` (lê a senha em modo raw); `gramsToMilli` foi para `grams.ts` (compartilhado por produção e precificação, sem que precificação importe produção); a listagem de estoque passou a trazer `priceCents` e filtrar por `active`, e o painel de Produtos usa só ela (uma requisição por página em vez de produtos + 100 itens de estoque).
 
-Fitness functions da seção 5, medidas agora: `dependency-cruiser` 0 violações; `grep -rc "pageSize: 100" web/src` = 0; dashboard = 1 requisição; CI executa os testes do web; `curl -I` do painel mostra CSP, XFO e nosniff. Contrato único: feito (item 14, 2026-11-10). Pendente: e2e (item 19).
+Fitness functions da seção 5, medidas agora: `dependency-cruiser` 0 violações; `grep -rc "pageSize: 100" web/src` = 0; dashboard = 1 requisição; CI executa os testes do web; `curl -I` do painel mostra CSP, XFO e nosniff. Contrato único e e2e: feitos (itens 14 e 19, 2026-11-10).
 

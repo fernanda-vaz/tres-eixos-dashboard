@@ -228,11 +228,22 @@ npm run check                # typecheck + lint + deps:check + test, de uma vez
 
 Para um projeto só: `npm test -w api`, `npm run lint -w web`, ou `cd api && npm test`.
 
+O roteiro de 10 minutos acima também roda sozinho no navegador (Playwright, `e2e/tests/smoke.spec.ts`), contra a pilha do Compose:
+
+```bash
+npx playwright install --with-deps chromium   # uma vez; baixa o navegador
+scripts/e2e-stack.sh up                       # sobe o Compose, aplica migrations, cria a conta e2e e espera o painel
+npm run e2e                                   # 12 passos: login, produto, estoque, receita, pedidos, produção, expedição, cancelamento, integrações, links
+scripts/e2e-stack.sh down                     # para api/worker/web (o banco fica)
+```
+
+Cada execução usa um sufixo próprio (`E2E-…`), então pode repetir; mas os dados do roteiro ficam gravados no banco local. No CI o banco é descartável.
+
 Os `package.json` declaram `"engines": { "node": ">=24" }`: os testes do painel usam o type stripping nativo do Node e falham com versões anteriores (`nvm use`).
 
 Os testes de integração usam `TEST_DATABASE_URL` e **recriam o schema** desse banco a cada execução. Por isso se recusam a rodar em um banco cujo nome não termine em `_test`. Nunca aponte para o banco real da loja.
 
-O CI (`.github/workflows/ci.yml`) roda tudo isso no GitHub, com um PostgreSQL isolado, e também constrói as imagens Docker.
+O CI (`.github/workflows/ci.yml`) roda tudo isso no GitHub: `checks` (typecheck, lint, fronteiras, testes e build dos três workspaces), `integration` (PostgreSQL isolado), `docker` (as duas imagens) e `e2e` (a pilha inteira do Compose no runner, com o smoke no Chromium; em falha, o relatório do Playwright fica como artefato).
 
 ## Backup
 
@@ -259,7 +270,8 @@ api/                backend: projeto Node próprio (package.json, tsconfig, Dock
   migrations/       SQL versionado (001…010)
   test/             testes unitários (test/*.test.ts) e de integração (test/integration/)
 web/                frontend: painel React (Vite) + Dockerfile e nginx.conf (cabeçalhos de segurança, CSP, proxy /api)
-scripts/            backup-db.sh
+scripts/            backup-db.sh, e2e-stack.sh (pilha do Compose pronta para o smoke e2e)
+e2e/                smoke e2e com Playwright (tests/smoke.spec.ts, playwright.config.ts)
 compose.yaml        postgres, api, worker e web (as imagens são construídas a partir da raiz: `docker build -f api/Dockerfile .`)
 .env                configuração local compartilhada (a partir do .env.example)
 docs/               arquitetura, contratos da API, tutorial e avaliação de arquitetura
