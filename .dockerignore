@@ -1,0 +1,13 @@
+# Contexto de build é a raiz: só entra o que os Dockerfiles copiam.
+**/node_modules
+**/dist
+.git
+.github
+.dev
+.env
+.env.*
+backups
+coverage
+docs
+scripts
+e2e

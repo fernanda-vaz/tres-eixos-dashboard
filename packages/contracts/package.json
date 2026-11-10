@@ -1,0 +1,15 @@
+{
+  "name": "@tres-eixos/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Contratos HTTP entre a API e o painel: tipos do que vai pelo fio, sem código em tempo de execução.",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

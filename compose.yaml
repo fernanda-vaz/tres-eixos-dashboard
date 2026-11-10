@@ -1,0 +1,85 @@
+# Demonstração local: banco, API, worker e painel. Nada é publicado fora de 127.0.0.1.
+# Segredos vêm do .env (POSTGRES_PASSWORD, SESSION_SECRET): nunca ficam fixos neste arquivo.
+# Para um deploy real, ponha um terminador TLS (Caddy/certbot) na frente do "web" e defina
+# COOKIE_SECURE=true e TRUST_PROXY (ver README, "Colocar no ar").
+
+x-database-url: &database-url postgresql://app:${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}@postgres:5432/app
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tres-eixos-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+      POSTGRES_DB: app
+    ports:
+      # Publicado só em 127.0.0.1: o banco nunca fica exposto na rede.
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - tres_eixos_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: &api-build
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      PORT: "3000"
+      NODE_ENV: production
+      # Dentro do Compose o banco é o serviço "postgres", porta interna 5432 (localhost seria a própria API).
+      DATABASE_URL: *database-url
+      SESSION_SECRET: ${SESSION_SECRET:?defina SESSION_SECRET no .env}
+      # Local é HTTP, então o padrão é false. Em deploy com HTTPS: COOKIE_SECURE=true no .env.
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      # O painel (nginx) é o único proxy à frente da API no Compose.
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      # Porta no host configurável: API_HOST_PORT no .env (padrão 8080).
+      - "127.0.0.1:${API_HOST_PORT:-8080}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Publica os eventos do outbox e roda a retenção. Defina OUTBOX_WEBHOOK_URL para enviar por HTTP
+  # (e OUTBOX_WEBHOOK_SECRET para assinar); sem ela, registra no log.
+  worker:
+    build: *api-build
+    command: ["node", "dist/src/worker.js"]
+    environment:
+      DATABASE_URL: *database-url
+      OUTBOX_WEBHOOK_URL: ${OUTBOX_WEBHOOK_URL:-}
+      OUTBOX_WEBHOOK_SECRET: ${OUTBOX_WEBHOOK_SECRET:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WORKER_HEARTBEAT_FILE: /tmp/tres-eixos-worker-heartbeat
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    # O worker não atende HTTP: o healthcheck confere a idade do arquivo que o laço toca a cada 5 s.
+    healthcheck:
+      test: ["CMD-SHELL", "test $(( $(date +%s) - $(stat -c %Y /tmp/tres-eixos-worker-heartbeat) )) -lt 60"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    ports:
+      - "127.0.0.1:${WEB_HOST_PORT:-8088}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  tres_eixos_pgdata:
