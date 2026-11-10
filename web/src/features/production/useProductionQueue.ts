@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { productionApi, type HeldJobDecision } from '../../api/endpoints.ts'
-import type { JobStatus, ProductionJob } from '../../api/types.ts'
+import type { JobStatus, ProductionJob } from '@tres-eixos/contracts'
 import { useAction } from '../../hooks/useAction.ts'
 import { useHashRoute } from '../../hooks/useHashRoute.ts'
 import { useResource } from '../../hooks/useResource.ts'

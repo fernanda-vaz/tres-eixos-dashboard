@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import type { Material } from '../../api/types.ts'
+import type { Material } from '@tres-eixos/contracts'
 import { availableFilaments, summarizeMix } from './filament-mix.ts'
 
 const line = (materialId: string, grams: string, costCents: number) =>

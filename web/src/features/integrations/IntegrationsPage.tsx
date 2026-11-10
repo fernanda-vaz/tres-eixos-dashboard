@@ -1,4 +1,4 @@
-import type { DeadEvent, IntegrationError } from '../../api/types.ts'
+import type { DeadEvent, IntegrationError } from '@tres-eixos/contracts'
 import { Button } from '../../components/ui/Button.tsx'
 import { Card } from '../../components/ui/Card.tsx'
 import { DataTable, type Column } from '../../components/ui/DataTable.tsx'

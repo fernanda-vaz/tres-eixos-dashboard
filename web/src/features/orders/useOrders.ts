@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ordersApi } from '../../api/endpoints.ts'
-import type { OrderStatus } from '../../api/types.ts'
+import type { OrderStatus } from '@tres-eixos/contracts'
 import { useAction } from '../../hooks/useAction.ts'
 import { useHashRoute } from '../../hooks/useHashRoute.ts'
 import { useResource } from '../../hooks/useResource.ts'

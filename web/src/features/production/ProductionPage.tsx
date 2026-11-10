@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { JobStatus } from '../../api/types.ts'
+import type { JobStatus } from '@tres-eixos/contracts'
 import { Button } from '../../components/ui/Button.tsx'
 import { Card } from '../../components/ui/Card.tsx'
 import { TextField } from '../../components/ui/Field.tsx'

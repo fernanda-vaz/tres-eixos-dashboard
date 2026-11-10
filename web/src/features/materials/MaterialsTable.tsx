@@ -1,4 +1,4 @@
-import type { Material } from '../../api/types.ts'
+import type { Material } from '@tres-eixos/contracts'
 import { Button } from '../../components/ui/Button.tsx'
 import { DataTable, type Column } from '../../components/ui/DataTable.tsx'
 import { TextField } from '../../components/ui/Field.tsx'

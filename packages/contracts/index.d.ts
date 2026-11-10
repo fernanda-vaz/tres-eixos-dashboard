@@ -1,7 +1,36 @@
-// Contratos da API (ver docs/api.md). Datas chegam como texto ISO; dinheiro em centavos; gramas em texto.
-// Mantidos à mão em espelho aos tipos de api/src: ao mudar um campo lá, mude aqui (ver docs/arquitetura.md).
+// Contratos HTTP do Três Eixos: o que a API devolve e o que o painel espera, na forma em que
+// trafega em JSON. Datas são texto ISO; dinheiro em centavos inteiros; gramas em texto decimal.
+//
+// Fonte única: a API prova em api/test/contracts.types.ts que cada tipo interno serializa
+// exatamente para o contrato daqui; o painel importa estes tipos direto. docs/api.md é exemplo,
+// não contrato. Só tipos: este pacote não tem código em tempo de execução.
+
+// ---------- Erros e paginação ----------
+
+/** Códigos estáveis de erro. O painel decide por eles, nunca pelo texto da mensagem. */
+export type ErrorCode =
+  | "validation"
+  | "unauthorized"
+  | "forbidden"
+  | "not_found"
+  | "conflict"
+  | "sku_taken"
+  | "idempotency_key_reused"
+  | "insufficient_stock"
+  | "insufficient_material"
+  | "rate_limited"
+  | "payload_too_large"
+  | "invalid_json"
+  | "csrf"
+  | "concurrency"
+  | "internal"
+
+/** Corpo de toda resposta de erro (status 4xx/5xx). */
+export type ApiErrorBody = { error: string; code: ErrorCode; details?: unknown }
 
 export type Page<T> = { items: T[]; page: number; pageSize: number; total: number }
+
+// ---------- Sessão ----------
 
 export type User = { id: string; email: string; name: string }
 
@@ -21,6 +50,7 @@ export type InventoryItem = {
   openProduction: number
 }
 
+/** Saldo de um produto depois de um ajuste de estoque. */
 export type StockLevel = { productId: string; physical: number; reserved: number; available: number }
 
 export type Material = {
@@ -36,7 +66,7 @@ export type Material = {
 
 export type RecipeLine = { materialId: string; name: string; color: string; gramsPerUnit: string }
 
-export type OrderStatus = 'pending_mapping' | 'awaiting_stock' | 'reserved' | 'ready' | 'shipped' | 'cancelled'
+export type OrderStatus = "pending_mapping" | "awaiting_stock" | "reserved" | "ready" | "shipped" | "cancelled"
 
 export type OrderSummary = {
   id: string
@@ -93,12 +123,15 @@ export type MaterialNeed = {
   availableGrams: string
 }
 
-export type JobStatus = 'queued' | 'printing' | 'on_hold' | 'done' | 'cancelled'
+export type JobStatus = "queued" | "printing" | "on_hold" | "done" | "cancelled"
+
+/** Por que o job existe: atender um pedido ou repor estoque. */
+export type JobPurpose = "order" | "stock"
 
 export type ProductionJob = {
   id: string
   status: JobStatus
-  purpose: 'order' | 'stock'
+  purpose: JobPurpose
   quantity: number
   priority: number
   priorityReason: string | null
@@ -117,10 +150,10 @@ export type PendingSku = { channelId: string; externalSku: string; pendingOrders
 
 export type IntegrationError = { eventId: string; attempts: number; lastError: string | null; receivedAt: string; payload: unknown }
 
-export type ImportOutcome = 'created' | 'updated' | 'unchanged' | 'duplicate' | 'ignored' | 'failed'
+export type ImportOutcome = "created" | "updated" | "unchanged" | "duplicate" | "ignored" | "failed"
 
 export type SyncResult = {
-  status: 'completed' | 'interrupted'
+  status: "completed" | "interrupted"
   cursor: string | null
   created: number
   updated: number
@@ -132,11 +165,14 @@ export type SyncResult = {
   error?: string
 }
 
+/** Agregado dono de um evento do outbox. */
+export type AggregateType = "order" | "production_job"
+
 /** Evento do outbox que esgotou as tentativas de publicação. */
 export type DeadEvent = {
   id: string
   topic: string
-  aggregateType: 'order' | 'production_job'
+  aggregateType: AggregateType
   aggregateId: string
   payload: unknown
   attempts: number

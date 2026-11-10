@@ -1,4 +1,4 @@
-import type { PriceResult, PricingChannel } from '../../api/types.ts'
+import type { PriceResult, PricingChannel } from '@tres-eixos/contracts'
 import { Badge } from '../../components/ui/Badge.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { formatCents } from '../../lib/format.ts'

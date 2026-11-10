@@ -1,4 +1,4 @@
-import type { PricingChannel } from '../../api/types.ts'
+import type { PricingChannel } from '@tres-eixos/contracts'
 import { Button } from '../../components/ui/Button.tsx'
 import { TextField } from '../../components/ui/Field.tsx'
 import { Form } from '../../components/ui/Form.tsx'

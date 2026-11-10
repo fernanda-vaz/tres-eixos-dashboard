@@ -1,4 +1,4 @@
-import type { OrderSummary } from '../../api/types.ts'
+import type { OrderSummary } from '@tres-eixos/contracts'
 import { StatusBadge } from '../../components/ui/Badge.tsx'
 import { EmptyState } from '../../components/ui/EmptyState.tsx'
 import { ORDER_STATUS } from '../../lib/labels.ts'

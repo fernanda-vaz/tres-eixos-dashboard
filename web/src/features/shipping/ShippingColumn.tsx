@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import type { OrderSummary } from '../../api/types.ts'
+import type { OrderSummary } from '@tres-eixos/contracts'
 import { Card } from '../../components/ui/Card.tsx'
 import { Pager } from '../../components/ui/Pager.tsx'
 import { ResourceView } from '../../components/ui/ResourceView.tsx'

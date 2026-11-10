@@ -1,4 +1,4 @@
-import type { InventoryItem, Material, OrderStatus } from '../../api/types.ts'
+import type { InventoryItem, Material, OrderStatus } from '@tres-eixos/contracts'
 import type { BarItem } from '../../components/ui/BarList.tsx'
 import type { Segment } from '../../components/ui/DonutChart.tsx'
 import { daysUntil, formatDayMonth, formatGrams } from '../../lib/format.ts'

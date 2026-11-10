@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { inventoryApi, productsApi } from '../../api/endpoints.ts'
-import type { InventoryItem } from '../../api/types.ts'
+import type { InventoryItem } from '@tres-eixos/contracts'
 import { useAction } from '../../hooks/useAction.ts'
 import { useResource } from '../../hooks/useResource.ts'
 

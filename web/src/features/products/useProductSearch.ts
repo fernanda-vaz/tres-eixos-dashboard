@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { productsApi } from '../../api/endpoints.ts'
-import type { Product } from '../../api/types.ts'
+import type { Product } from '@tres-eixos/contracts'
 import { useDebouncedValue } from '../../hooks/useDebouncedValue.ts'
 import { useResource } from '../../hooks/useResource.ts'
 

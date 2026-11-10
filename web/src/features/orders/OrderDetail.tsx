@@ -1,4 +1,4 @@
-import type { Order } from '../../api/types.ts'
+import type { Order } from '@tres-eixos/contracts'
 import { Badge, StatusBadge } from '../../components/ui/Badge.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { DataTable, type Column } from '../../components/ui/DataTable.tsx'

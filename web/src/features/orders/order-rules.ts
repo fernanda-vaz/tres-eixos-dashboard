@@ -1,4 +1,4 @@
-import type { Order } from '../../api/types.ts'
+import type { Order } from '@tres-eixos/contracts'
 
 /** Pedido ainda pode ser cancelado (não foi enviado nem cancelado). */
 export const isOpen = (order: Pick<Order, 'status'>) => order.status !== 'shipped' && order.status !== 'cancelled'

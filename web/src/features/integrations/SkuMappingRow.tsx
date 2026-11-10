@@ -1,4 +1,4 @@
-import type { PendingSku } from '../../api/types.ts'
+import type { PendingSku } from '@tres-eixos/contracts'
 import { Button } from '../../components/ui/Button.tsx'
 import { Form } from '../../components/ui/Form.tsx'
 import { ProductPicker } from '../products/ProductPicker.tsx'

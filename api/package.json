@@ -1,12 +1,7 @@
 {
-  "name": "tres-eixos-dashboard",
+  "name": "@tres-eixos/api",
   "version": "1.0.0",
   "description": "Sistema de gestão para meu negócio de impressão 3D.",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs",
-    "test": "test"
-  },
   "scripts": {
     "test": "node --import tsx --test test/*.test.ts",
     "dev": "node --env-file=../.env --import tsx --watch src/server.ts",
@@ -22,18 +17,8 @@
     "worker": "node --env-file=../.env --import tsx src/worker.ts",
     "deps:check": "depcruise src --config .dependency-cruiser.cjs"
   },
-  "keywords": [],
-  "author": "",
   "license": "ISC",
   "type": "module",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/fernanda-vaz/tres-eixos-dashboard.git"
-  },
-  "bugs": {
-    "url": "https://github.com/fernanda-vaz/tres-eixos-dashboard/issues"
-  },
-  "homepage": "https://github.com/fernanda-vaz/tres-eixos-dashboard#readme",
   "private": true,
   "dependencies": {
     "connect-pg-simple": "10.0.0",
@@ -47,11 +32,10 @@
     "@types/connect-pg-simple": "7.0.3",
     "@types/express": "5.0.6",
     "@types/express-session": "1.19.0",
-    "@types/node": "^24.19.2",
     "@types/pg": "8.23.1",
     "dependency-cruiser": "^18.7.2",
     "tsx": "4.23.15",
-    "typescript": "5.9.3"
+    "@tres-eixos/contracts": "1.0.0"
   },
   "engines": {
     "node": ">=24"

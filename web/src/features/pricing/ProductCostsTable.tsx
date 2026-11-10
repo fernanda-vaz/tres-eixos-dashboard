@@ -1,4 +1,4 @@
-import type { ProductCost } from '../../api/types.ts'
+import type { ProductCost } from '@tres-eixos/contracts'
 import { Badge } from '../../components/ui/Badge.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { DataTable, type Column } from '../../components/ui/DataTable.tsx'

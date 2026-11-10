@@ -2,20 +2,24 @@ import { Router } from "express"
 import { pool } from "../db.js"
 import { NotFoundError } from "../http/errors.js"
 import { parseUuid } from "../http/validation.js"
+import type { AggregateType } from "./enqueue.js"
 
 export const outboxRouter = Router()
 
 type DeadRow = {
   id: string
   topic: string
-  aggregate_type: string
+  aggregate_type: AggregateType
   aggregate_id: string
   payload: unknown
   attempts: number
   last_error: string | null
   created_at: Date
-  dead_at: Date
+  dead_at: Date | null
 }
+
+/** Evento na dead-letter, como vai para o painel. */
+export type DeadEvent = ReturnType<typeof toDeadEvent>
 
 const toDeadEvent = (row: DeadRow) => ({
   id: row.id,

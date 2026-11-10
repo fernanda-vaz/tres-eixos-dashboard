@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { pricingApi } from '../../api/endpoints.ts'
-import type { PricingChannel } from '../../api/types.ts'
+import type { PricingChannel } from '@tres-eixos/contracts'
 import { useAction } from '../../hooks/useAction.ts'
 import { useResource } from '../../hooks/useResource.ts'
 import { centsToInput, parsePercent, parseReaisToCents, percentToInput } from '../../lib/parse.ts'

@@ -1,5 +1,5 @@
 import type { AppRoute } from '../../app/routes.ts'
-import type { User } from '../../api/types.ts'
+import type { User } from '@tres-eixos/contracts'
 import { initials } from '../../lib/format.ts'
 import { Icon } from '../ui/Icon.tsx'
 

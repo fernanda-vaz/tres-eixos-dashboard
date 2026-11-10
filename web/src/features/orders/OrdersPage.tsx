@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import type { OrderStatus } from '../../api/types.ts'
+import type { OrderStatus } from '@tres-eixos/contracts'
 import { Button } from '../../components/ui/Button.tsx'
 import { Card } from '../../components/ui/Card.tsx'
 import { Drawer } from '../../components/ui/Drawer.tsx'

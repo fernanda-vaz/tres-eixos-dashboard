@@ -1,4 +1,4 @@
-import type { OrderSummary } from '../../api/types.ts'
+import type { OrderSummary } from '@tres-eixos/contracts'
 import { StatusBadge } from '../../components/ui/Badge.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { DataTable, type Column } from '../../components/ui/DataTable.tsx'

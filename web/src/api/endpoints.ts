@@ -24,7 +24,7 @@ import type {
   StockLevel,
   SyncResult,
   User,
-} from './types.ts'
+} from '@tres-eixos/contracts'
 
 // Uma função por rota da API. Componentes e hooks nunca montam URLs nem chamam fetch diretamente.
 

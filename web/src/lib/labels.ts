@@ -1,4 +1,4 @@
-import type { JobStatus, OrderStatus } from '../api/types.ts'
+import type { JobStatus, OrderStatus } from '@tres-eixos/contracts'
 
 /** Tons visuais do design system (mapeados em styles/components.css). */
 export type Tone = 'success' | 'warning' | 'info' | 'accent' | 'danger' | 'neutral'

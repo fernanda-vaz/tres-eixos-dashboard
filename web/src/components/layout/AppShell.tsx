@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { User } from '../../api/types.ts'
+import type { User } from '@tres-eixos/contracts'
 import { findRoute, ROUTES } from '../../app/routes.ts'
 import { useHashRoute } from '../../hooks/useHashRoute.ts'
 import { ErrorBoundary } from '../ErrorBoundary.tsx'

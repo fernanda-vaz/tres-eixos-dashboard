@@ -26,7 +26,9 @@ services:
       retries: 10
 
   api:
-    build: ./api
+    build: &api-build
+      context: .
+      dockerfile: api/Dockerfile
     environment:
       PORT: "3000"
       NODE_ENV: production
@@ -49,7 +51,7 @@ services:
   # Publica os eventos do outbox e roda a retenção. Defina OUTBOX_WEBHOOK_URL para enviar por HTTP
   # (e OUTBOX_WEBHOOK_SECRET para assinar); sem ela, registra no log.
   worker:
-    build: ./api
+    build: *api-build
     command: ["node", "dist/src/worker.js"]
     environment:
       DATABASE_URL: *database-url
@@ -70,7 +72,9 @@ services:
       retries: 3
 
   web:
-    build: ./web
+    build:
+      context: .
+      dockerfile: web/Dockerfile
     ports:
       - "127.0.0.1:${WEB_HOST_PORT:-8088}:80"
     depends_on:

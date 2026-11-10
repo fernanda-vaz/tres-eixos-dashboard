@@ -1,4 +1,4 @@
-import type { CostBreakdown, CostSheet, PricingSettings } from '../../api/types.ts'
+import type { CostBreakdown, CostSheet, PricingSettings } from '@tres-eixos/contracts'
 import type { BarItem } from '../../components/ui/BarList.tsx'
 import { formatCents } from '../../lib/format.ts'
 import type { Tone } from '../../lib/labels.ts'

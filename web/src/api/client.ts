@@ -1,22 +1,10 @@
 // Cliente HTTP do painel. Nenhum segredo fica no frontend: a sessão é um cookie HttpOnly
 // e o token CSRF vive só na memória desta aba.
 
-/** Códigos estáveis da API (ver docs/api.md, "Erros"). O painel decide por eles, nunca pelo texto. */
-export type ApiErrorCode =
-  | 'validation'
-  | 'unauthorized'
-  | 'forbidden'
-  | 'not_found'
-  | 'conflict'
-  | 'sku_taken'
-  | 'idempotency_key_reused'
-  | 'rate_limited'
-  | 'payload_too_large'
-  | 'invalid_json'
-  | 'csrf'
-  | 'concurrency'
-  | 'internal'
-  | 'network'
+import type { ErrorCode } from '@tres-eixos/contracts'
+
+/** Códigos do contrato mais 'network', que só existe no navegador (a chamada nem chegou à API). */
+export type ApiErrorCode = ErrorCode | 'network'
 
 export class ApiError extends Error {
   readonly status: number

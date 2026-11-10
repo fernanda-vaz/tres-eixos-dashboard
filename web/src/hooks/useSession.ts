@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { onUnauthorized } from '../api/client.ts'
 import { authApi } from '../api/endpoints.ts'
-import type { User } from '../api/types.ts'
+import type { User } from '@tres-eixos/contracts'
 
 export type Session =
   | { status: 'checking' }

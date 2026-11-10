@@ -1,4 +1,4 @@
-import type { ProductionJob } from '../../api/types.ts'
+import type { ProductionJob } from '@tres-eixos/contracts'
 import { Badge, StatusBadge } from '../../components/ui/Badge.tsx'
 import { Button } from '../../components/ui/Button.tsx'
 import { TextField } from '../../components/ui/Field.tsx'

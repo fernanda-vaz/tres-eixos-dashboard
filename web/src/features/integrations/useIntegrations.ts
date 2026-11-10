@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { integrationsApi, outboxApi } from '../../api/endpoints.ts'
-import type { DeadEvent, PendingSku, SyncResult } from '../../api/types.ts'
+import type { DeadEvent, PendingSku, SyncResult } from '@tres-eixos/contracts'
 import { useAction } from '../../hooks/useAction.ts'
 import { useResource } from '../../hooks/useResource.ts'
 

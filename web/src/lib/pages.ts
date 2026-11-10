@@ -1,4 +1,4 @@
-import type { Page } from '../api/types.ts'
+import type { Page } from '@tres-eixos/contracts'
 
 export const MAX_PAGE_SIZE = 100
 

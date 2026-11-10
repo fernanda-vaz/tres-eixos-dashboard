@@ -1,4 +1,4 @@
-import type { ProductPricing } from '../../api/types.ts'
+import type { ProductPricing } from '@tres-eixos/contracts'
 import { BarList } from '../../components/ui/BarList.tsx'
 import { Card } from '../../components/ui/Card.tsx'
 import { EmptyState } from '../../components/ui/EmptyState.tsx'

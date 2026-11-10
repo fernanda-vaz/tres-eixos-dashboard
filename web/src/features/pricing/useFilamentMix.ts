@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { materialsApi } from '../../api/endpoints.ts'
-import type { Material } from '../../api/types.ts'
+import type { Material } from '@tres-eixos/contracts'
 import { useAction } from '../../hooks/useAction.ts'
 import { useResource } from '../../hooks/useResource.ts'
 import { collectAll } from '../../lib/pages.ts'

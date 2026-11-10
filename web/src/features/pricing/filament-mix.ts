@@ -1,4 +1,4 @@
-import type { Material, ProductPricing } from '../../api/types.ts'
+import type { Material, ProductPricing } from '@tres-eixos/contracts'
 
 export type FilamentLine = ProductPricing['materials'][number]
 

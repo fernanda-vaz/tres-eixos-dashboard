@@ -21,7 +21,7 @@ import {
 import { canAdjust } from "./rules.js"
 import { notifyStockIncreased } from "./stock-events.js"
 
-type InventoryBalance = InventoryRow & { available: number }
+export type InventoryBalance = InventoryRow & { available: number }
 
 function withAvailable(inventory: InventoryRow): InventoryBalance {
   return { ...inventory, available: inventory.physical - inventory.reserved }
