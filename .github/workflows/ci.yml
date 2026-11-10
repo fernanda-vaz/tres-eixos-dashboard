@@ -20,6 +20,7 @@ jobs:
           cache-dependency-path: api/package-lock.json
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run deps:check
       - run: npm test
       - run: npm run build
 
@@ -69,6 +70,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - run: npm ci
       - run: npm run lint
+      - run: npm test
       - run: npm run build
 
   docker:
