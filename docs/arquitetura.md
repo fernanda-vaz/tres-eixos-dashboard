@@ -10,27 +10,55 @@ Monólito modular em Node.js 24 + TypeScript + Express 5 + PostgreSQL. Um único
 | `*-repository.ts` | SQL parametrizado e mapeamento de linhas para tipos |
 | `*-rules.ts` / `rules.ts` | regras puras, sem HTTP nem banco (testadas sem banco) |
 
-As dependências apontam para dentro: rotas → serviço → repositório. Repositórios não importam nada de `http/`.
+As dependências apontam para dentro: rotas → serviço → repositório. Repositórios não importam nada de `http/` e recebem sempre o `db: Queryable` (pool ou client de transação) como primeiro parâmetro: a mesma função serve dentro e fora de uma transação.
+
+### Dependências entre módulos
+
+```
+catalog, pricing, security   →  (só infraestrutura: db, http, outbox/enqueue…)
+inventory                    →  catalog
+production                   →  inventory, catalog
+orders                       →  catalog, inventory, production, e a porta allocation-port.ts
+fulfillment                  →  orders, inventory, production
+integrations                 →  orders, fulfillment, catalog, inventory
+dashboard                    →  orders, inventory (só leitura)
+app.ts                       →  tudo (composição)
+```
+
+- `fulfillment/allocation.ts` é o serviço de domínio que atravessa pedidos, estoque e produção: reservar, enfileirar produção para a falta, realocar quando entra saldo, liberar reservas. Fica em módulo próprio para que nenhum dos três precise importar os outros.
+- `orders` chama o fulfillment pela interface que ele mesmo declara (`orders/allocation-port.ts`); `inventory` e `production` só avisam "o saldo deste produto subiu" (`inventory/stock-events.ts`). `app.ts` liga as duas pontas em `registerFulfillment()`. Mesma transação, mesma ordem de locks, sem ciclo.
+- Essas regras são verificadas pelo `dependency-cruiser` (`api/.dependency-cruiser.cjs`, `npm run deps:check`, no CI): sem ciclos, núcleo não importa pedidos, repositório não importa `http/`, ninguém importa `app.ts`.
 
 ```
 api/src/
   app.ts, server.ts      composição, /health, /ready, encerramento gracioso
   db.ts                  pool, withTransaction (um único client por transação), queryPage (página + total)
+  logger.ts              pino: uma linha JSON por evento (LOG_LEVEL)
   pagination.ts          Page, PageRequest, toPage
-  sql.ts, pg-errors.ts   helpers sem conexão (likePattern, códigos de erro do pg)
-  outbox.ts              eventos gravados na mesma transação da mudança
-  http/                  erros, validação de entrada unknown, Idempotency-Key
-  catalog/               produtos (SKU, preço em centavos, ativo)
-  inventory/             peças prontas (physical/reserved), filamento (gramas) e receitas: inventory-* e material-*
-  orders/                pedidos, alocação (allocation.ts), reservas, envio (shipment-repository), canais fixos
+  sql.ts, grams.ts, pg-errors.ts
+                         helpers sem conexão (likePattern, gramas em miligramas BigInt, códigos de erro do pg)
+  retention.ts           steady state: apaga chaves de idempotência, outbox publicado, eventos processados e
+                         janelas de login antigos (rodado pelo worker a cada hora)
+  http/                  erros com código estável, validação de entrada unknown, Idempotency-Key,
+                         log por requisição com X-Request-Id, contadores de /metrics
+  outbox/                enqueue (mesma transação), publishers (log, webhook assinado), worker (lote alugado,
+                         dead-letter), retry-policy, routes (GET /outbox/dead, POST /outbox/:id/retry)
+  catalog/               produtos (SKU, preço em centavos, ativo, busca por SKU exato)
+  inventory/             peças prontas (physical/reserved), filamento (gramas), receitas e o aviso
+                         "saldo subiu" (stock-events.ts): inventory-* e material-*
+  orders/                pedidos, reservas, envio (shipment-repository), canais fixos e a porta para o
+                         fulfillment (allocation-port.ts)
+  fulfillment/           allocation.ts (reservar, enfileirar falta, realocar, liberar) e o registro na composição
   production/            fila de impressão, bloqueio por cor, conclusão
   integrations/          MarketplaceConnector, simulador, importação com retomada, mapeamento de SKU externo
+  dashboard/             GET /dashboard/summary: a visão geral em uma consulta
   security/              sessão (session.ts: express-session + connect-pg-simple), CSRF (csrf.ts: csrf-sync),
-                         login (auth-service.ts + login-limiter.ts), senha, requireAuth
-  outbox-worker.ts       publicação dos eventos (lote alugado com SKIP LOCKED, fora de transação)
-  worker.ts              processo do worker (npm run worker / serviço "worker")
+                         login (auth-service.ts + login-limiter.ts), senha (scrypt com rehash), requireAuth
+  worker.ts              processo do worker: outbox, heartbeat, métricas por minuto, retenção por hora
   scripts/               migrate.mjs, create-user.ts
-api/migrations/          001…009, aplicadas em ordem; nunca editar uma já aplicada
+api/migrations/          001…010, aplicadas em ordem; nunca editar uma já aplicada
+api/.dependency-cruiser.cjs
+                         regras de dependência entre módulos (npm run deps:check)
 web/                     painel React (Vite); em produção, nginx serve o build e faz proxy de /api
 ```
 
@@ -39,7 +67,7 @@ web/                     painel React (Vite); em produção, nginx serve o build
 | Processo | Papel |
 |---|---|
 | `api` | HTTP: regras de negócio, sessões, importação |
-| `worker` | lê o `outbox` e publica os eventos (log estruturado ou `OUTBOX_WEBHOOK_URL`) |
+| `worker` | lê o `outbox` e publica os eventos (log estruturado ou `OUTBOX_WEBHOOK_URL`); a cada minuto registra fila, idade do evento mais antigo e eventos mortos; a cada hora roda a retenção; toca um arquivo de heartbeat para o healthcheck do Compose |
 | `web` | nginx com o build do painel; `/api/*` → `api:3000/*` |
 | `postgres` | única fonte de verdade |
 
@@ -49,10 +77,13 @@ React 19 + Vite, sem bibliotecas de estado ou de UI. A regra é: **componentes `
 
 ```
 web/src/
-  api/          client.ts (fetch, CSRF, ApiError), endpoints.ts (uma função por rota), types.ts (contratos)
-  lib/          funções puras: format, parse, labels (status → rótulo e tom), charts, errors, idempotency
-  hooks/        useResource (carga + estados), useAction (escrita sem envio duplo), useSession, useHashRoute
+  api/          client.ts (fetch, CSRF, ApiError com code), endpoints.ts (uma função por rota), types.ts (contratos)
+  lib/          funções puras: format, parse, labels (status → rótulo e tom), charts, errors (mensagem por code),
+                idempotency, hash (rota, item e filtros na URL), pages (percorrer páginas de listas pequenas)
+  hooks/        useResource (carga + estados), useAction (escrita sem envio duplo), useSession,
+                useHashRoute (#/secao/<id>?filtro=…), useDebouncedValue
   components/
+    ErrorBoundary.tsx   um erro de renderização derruba só a seção, com "tentar de novo"
     ui/         design system reutilizável: Button, Card, Badge, TextField/SelectField, Form, DataTable,
                 Drawer, SegmentedControl, StatCard, DonutChart, BarList, ProgressBar, ResourceView…
     layout/     AppShell e Sidebar
@@ -64,7 +95,10 @@ web/src/
 
 - Visual "glass": fundo em degradê claro (lilás → azul-céu → rosa) com brilhos desfocados e painéis translúcidos com `backdrop-filter`. Tema claro fixo, mesmo com o sistema em modo escuro.
 - Cores semânticas via classes `tone-*` (que expõem `--tone`): o mesmo tom serve para badge, gráfico, barra e ícone.
-- Funções puras têm testes com o runner nativo do Node (`cd web && npm test`).
+- Funções puras têm testes com o runner nativo do Node (`cd web && npm test`, exige Node 24; roda no CI).
+- Listas nunca têm teto silencioso: seleções de produto usam busca incremental (`ProductPicker`, 20 resultados e aviso para refinar), filas e tabelas são paginadas, e as poucas listas carregadas inteiras (filamentos) percorrem as páginas e avisam se passarem do limite.
+- Seção, item aberto e filtros ficam no hash da URL (`#/pedidos/<id>?status=ready&page=2`): recarregar ou compartilhar o link preserva o contexto.
+- Os tipos de `api/types.ts` espelham à mão os do backend; o CI não compara os dois. Ao mudar um campo na API, mude aqui no mesmo commit (um pacote de contratos compartilhado é a evolução prevista, ver `docs/avaliacao-arquitetura.md`).
 
 ## Estoque: dois estoques, unidades diferentes
 
@@ -111,7 +145,11 @@ Job de produção: `queued` → `printing` → `done`, ou `cancelled`. Se o pedi
 - Limite de login por janela de 15 minutos: 5 tentativas por IP+e-mail, 20 por conta (qualquer IP) e 50 por IP. A tentativa é contada **antes** de conferir a senha, numa instrução atômica, então requisições paralelas não furam o limite. A contagem fica no PostgreSQL (`login_attempts`, só hashes das chaves). Efeito aceito: um ataque distribuído pode bloquear o login da conta por até 15 minutos.
 - A sessão anônima criada só para o token CSRF do login dura 10 minutos.
 - Sem CORS: o painel acessa a API pela mesma origem, via proxy `/api`.
-- Corpo limitado a 32 kB, listagens paginadas (máx. 100), campos inesperados recusados e erros 500 sem stack trace.
+- Corpo limitado a 32 kB (256 kB só em `POST /imports/orders`; o nginx aceita até 256 kB), listagens paginadas (máx. 100), campos inesperados recusados e erros 500 sem stack trace.
+- Senhas com scrypt `N=2^15, r=8, p=3` (faixa recomendada pelo OWASP, ~32 MB por hash). O formato gravado leva os parâmetros; um hash antigo é refeito de forma transparente no próximo login certo.
+- Cabeçalhos de segurança do HTML ficam no nginx (`web/nginx.conf`): `X-Frame-Options`, `nosniff`, `Referrer-Policy`, `Permissions-Policy` e uma `Content-Security-Policy` sem inline (scripts e chamadas só da própria origem; fontes do Google Fonts). A API repete os três primeiros nas respostas JSON. `Strict-Transport-Security` fica comentado até existir TLS.
+- Servidor HTTP com `headersTimeout` de 10 s e `requestTimeout` de 30 s: uma conexão travada não segura um slot do pool.
+- Webhook do outbox assinado com HMAC-SHA256 (`OUTBOX_WEBHOOK_SECRET`), ver docs/api.md.
 
 ## Outbox
 
@@ -120,9 +158,20 @@ Mudanças relevantes (pedido criado, status alterado, enviado, cancelado, produ�
 1. aluga um lote (`locked_until` + `lease_id`) com `FOR UPDATE SKIP LOCKED`: dois workers nunca pegam o mesmo evento. O aluguel dura mais que o pior caso do lote (20 eventos × 5 s de timeout + folga), e só quem detém o `lease_id` pode marcar o evento como publicado ou reagendá-lo;
 2. cada lote leva **só o primeiro evento pendente de cada pedido** (ordem pela sequência de gravação `seq`): um evento nunca sai antes do anterior do mesmo pedido, mesmo que o anterior esteja aguardando retentativa;
 3. publica cada evento **fora** de transação e marca `published_at`;
-4. em caso de falha, incrementa `attempts`, guarda `last_error` e reagenda (`next_attempt_at`: 2, 4, 8… s, até 15 min); os outros pedidos seguem normalmente.
+4. em caso de falha, incrementa `attempts`, guarda `last_error` e reagenda (`next_attempt_at`: 2, 4, 8… s, até 15 min); os outros pedidos seguem normalmente;
+5. na 20ª falha o evento vai para a **dead-letter** (`dead_at`), com log de erro, e deixa de ser reagendado. De propósito ele continua segurando os eventos seguintes do mesmo agregado (a ordem vale mais que a pressa). A loja vê a lista em `GET /outbox/dead` (e na tela de Integrações) e, depois de corrigir o destino, devolve o evento à fila com `POST /outbox/:id/retry`.
+
+Cada evento traz `aggregate_type` (`order` ou `production_job`) além do `aggregate_id`: o consumidor não precisa inferir pelo tópico.
 
 A entrega é "pelo menos uma vez": se o worker morrer entre publicar e marcar, o aluguel expira e o evento é republicado. O receptor deve deduplicar pelo `id` (enviado também em `Idempotency-Key` no webhook). No encerramento, o lote em andamento termina antes de o processo sair.
+
+## Observabilidade e steady state
+
+- **Logs**: `pino`, uma linha JSON por evento, em API, worker e scripts (`LOG_LEVEL`). Cada requisição gera uma linha com `requestId`, método, rota (padrão, ex.: `/orders/:id`), status, duração e `userId`. Nunca o corpo nem credenciais. O `requestId` vem do nginx (`X-Request-Id`) ou é gerado, e volta na resposta.
+- **Métricas**: `GET /metrics` devolve os contadores desta instância (requisições, por classe de status, 409, 500, latência por rota) e a situação do outbox. O worker registra a cada minuto `pending`, `oldestPendingAgeSeconds`, `dead` e o que publicou/falhou desde o último registro, em `warn` quando há evento morto ou a fila passa de uma hora.
+- **Healthcheck do worker**: o laço toca um arquivo (`WORKER_HEARTBEAT_FILE`) a cada 5 s; o Compose considera o worker doente se o arquivo tiver mais de 60 s.
+- **Retenção** (`retention.ts`, uma vez por hora no worker): `idempotency_keys` com mais de 7 dias, `outbox` publicado há mais de 30 dias, `integration_events` processados ou ignorados há mais de 90 dias, `login_attempts` com janela de mais de 1 dia. As tabelas de auditoria (`stock_movements`, `material_movements`, históricos de status) não são apagadas: crescem com a operação e, se um dia pesarem, pedem arquivamento, não retenção.
+- **Backup**: `scripts/backup-db.sh` (pg_dump comprimido, mantém 14), pensado para um cron diário; ver README.
 
 ## Limitações conhecidas
 
@@ -130,3 +179,5 @@ A entrega é "pelo menos uma vez": se o worker morrer entre publicar e marcar, o
 - O destino do outbox é log ou webhook genérico; ainda não há um consumidor real dos eventos.
 - Reserva de item é tudo-ou-nada: um item de 3 unidades aguarda as 3.
 - Uma única loja e uma conta de dona. Não há permissões por equipe.
+- Sem TLS no Compose: para expor na internet, ponha um terminador HTTPS (Caddy/certbot) na frente do `web`, ligue `COOKIE_SECURE=true` e descomente o `Strict-Transport-Security` do nginx.
+- Os contratos entre API e painel são mantidos à mão (dois arquivos de tipos); não há teste de contrato nem e2e no navegador. Ver `docs/avaliacao-arquitetura.md` para o que foi aplicado e o que ainda falta.

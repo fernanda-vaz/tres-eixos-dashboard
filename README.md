@@ -52,7 +52,10 @@ O `.env` fica na raiz porque é compartilhado pela API, pelo proxy do Vite e pel
 | `PORT` | porta da API em desenvolvimento (ex.: `8080`) |
 | `SESSION_SECRET` | **troque** por um valor aleatório: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
 | `TEST_DATABASE_URL` | banco dos testes de integração; o nome precisa terminar em `_test` |
+| `POSTGRES_PASSWORD` | senha do banco no Docker Compose (o Compose se recusa a subir sem ela); mantenha `DATABASE_URL` coerente |
 | `API_HOST_PORT`, `WEB_HOST_PORT` | portas do Compose no host (padrão 8080 e 8088); troque se estiverem ocupadas |
+| `OUTBOX_WEBHOOK_URL`, `OUTBOX_WEBHOOK_SECRET` | destino dos eventos do outbox e o segredo da assinatura HMAC (opcionais; sem URL, os eventos vão para o log) |
+| `LOG_LEVEL` | nível de log da API e do worker (`info` por padrão) |
 
 O `.env` nunca vai para o Git nem para as imagens Docker.
 
@@ -64,7 +67,7 @@ npm run db:up        # sobe o PostgreSQL (container tres-eixos-postgres)
 npm run migrate      # aplica as migrations pendentes de api/migrations/ em ordem
 ```
 
-O `migrate` pode ser rodado sempre: ele aplica só o que falta e registra tudo em `schema_migrations`. **Nunca edite uma migration já aplicada**; crie a próxima (`010_...sql`).
+O `migrate` pode ser rodado sempre: ele aplica só o que falta e registra tudo em `schema_migrations`. **Nunca edite uma migration já aplicada**; crie a próxima (`011_...sql`).
 
 Para conferir no psql:
 
@@ -117,13 +120,14 @@ docker compose ps
 
 - Painel: **http://localhost:8088**
 - API direta: `http://localhost:8080` (ou o `API_HOST_PORT` do `.env`)
+- `docker compose ps` mostra `healthy` para `api` (responde `/ready`) e para `worker` (tocou o heartbeat nos últimos 60 s)
 
 Dentro do Compose, a API fala com o banco pelo nome `postgres`, porta 5432. Tudo é publicado só em `127.0.0.1`, nunca na rede.
 
 Comandos do dia a dia:
 
 ```bash
-docker compose logs -f api worker     # acompanhar logs
+docker compose logs -f api worker     # acompanhar logs (uma linha JSON por evento; a cada minuto o worker resume o outbox)
 docker compose stop                   # pausar mantendo os dados
 docker compose down                   # remover containers mantendo os volumes
 ```
@@ -131,6 +135,8 @@ docker compose down                   # remover containers mantendo os volumes
 **Não** use `docker compose down -v` como rotina: o `-v` **apaga o banco**.
 
 Se a API e o Compose forem usados ao mesmo tempo, as portas conflitam. Use uma opção de cada vez.
+
+Para expor na internet (não é o caso da demo): um terminador HTTPS (Caddy ou certbot) na frente do `web`, `COOKIE_SECURE=true` e `TRUST_PROXY` conferidos no `.env`, e o `Strict-Transport-Security` descomentado em `web/nginx.conf`.
 
 ## 6. Testar a aplicação
 
@@ -146,7 +152,8 @@ Abra o painel (`http://localhost:5173` na opção A ou `http://localhost:8088` n
 6. **Expedição**: **Marcar como pronto** → **Etiqueta impressa** → **Expedir**. O estoque físico baixa.
 7. **Pedidos → Detalhes** de um pedido ainda reservado: cancele-o. A reserva é liberada e o histórico registra o motivo.
 8. **Precificação**: em **Configurar custos**, preencha energia, impressora, valor da sua hora, falhas e imposto, e as tarifas de cada canal. Em **Materiais**, informe o preço por kg do PLA Azul. Escolha `CUBO-AZUL` na calculadora, informe 150 min de impressão e 20 min de mão de obra e veja o custo e o preço sugerido por canal; **Usar este preço** atualiza o produto.
-9. **Integrações**: **Sincronizar pedidos simulados**. Aparecem pendências de SKU (`SIM-...`). Mapeie cada uma para um produto; os pedidos pendentes são reprocessados. Sincronize de novo: nada é duplicado.
+9. **Integrações**: **Sincronizar pedidos simulados**. Aparecem pendências de SKU (`SIM-...`). Mapeie cada uma para um produto (o campo de busca aceita SKU ou nome); os pedidos pendentes são reprocessados. Sincronize de novo: nada é duplicado. A mesma tela lista os eventos de saída que esgotaram as tentativas de publicação, com o botão para tentar de novo.
+10. **Links**: abra um pedido e recarregue a página: a URL (`#/pedidos/<id>?status=…`) guarda a seção, o pedido aberto e o filtro.
 
 ### Pela API com curl
 
@@ -187,7 +194,14 @@ req $API/inventory/$PID
 # simulador de marketplace
 req -X POST $API/integrations/simulator/sync | jq
 req $API/integrations/pending-skus
+
+# operação: visão geral em uma chamada, métricas desta instância e eventos de saída parados
+req $API/dashboard/summary | jq '{orders, production}'
+req $API/metrics | jq '{counters, outbox}'
+req $API/outbox/dead
 ```
+
+Toda resposta de erro traz `code` além da mensagem (`{"error":"SKU já cadastrado","code":"sku_taken"}`) e toda resposta traz `X-Request-Id`, o mesmo id da linha de log da API.
 
 Também vale testar os erros esperados:
 - requisição sem login: `401`;
@@ -201,11 +215,14 @@ Também vale testar os erros esperados:
 
 ```bash
 cd api
-npm test                     # regras puras (estoque, pedidos, fila, validação, conector), sem banco
-npm run test:integration     # PostgreSQL real: concorrência, idempotência, produção, importação, worker, login
+npm test                     # regras puras (estoque, pedidos, fila, validação, conector, outbox), sem banco
+npm run test:integration     # PostgreSQL real: concorrência, idempotência, produção, importação, worker, login, dead-letter, retenção
 npm run typecheck
+npm run deps:check           # fronteiras entre módulos (dependency-cruiser): sem ciclos, núcleo não importa pedidos…
 cd ../web && npm test && npm run lint && npm run build
 ```
+
+Os dois projetos declaram `"engines": { "node": ">=24" }`: os testes do painel usam o type stripping nativo do Node e falham com versões anteriores (`nvm use`).
 
 Os testes de integração usam `TEST_DATABASE_URL` e **recriam o schema** desse banco a cada execução. Por isso se recusam a rodar em um banco cujo nome não termine em `_test`. Nunca aponte para o banco real da loja.
 
@@ -214,24 +231,30 @@ O CI (`.github/workflows/ci.yml`) roda tudo isso no GitHub, com um PostgreSQL is
 ## Backup
 
 ```bash
-mkdir -p backups
-docker compose exec -T postgres sh -c 'pg_dump -U app app' > backups/demo.sql
+scripts/backup-db.sh          # pg_dump comprimido em backups/app-AAAA-MM-DD-HHMM.sql.gz; mantém os 14 mais recentes
 ```
 
-`backups/` está no `.gitignore`. Teste a restauração em um banco separado, nunca sobre o banco em uso.
+Para um backup diário automático, uma linha no `crontab -e` do host:
+
+```
+0 3 * * * cd /caminho/do/projeto && scripts/backup-db.sh >> backups/backup.log 2>&1
+```
+
+`backups/` está no `.gitignore`. Teste a restauração em um banco separado, nunca sobre o banco em uso (o comando está no cabeçalho do script).
 
 ## Estrutura
 
 ```
 api/                backend: projeto Node próprio (package.json, tsconfig, Dockerfile)
-  src/              API (módulos catalog, inventory, orders, production, integrations, security, pricing)
-  src/worker.ts     worker do outbox
-  migrations/       SQL versionado (001…009)
+  src/              API (módulos catalog, inventory, orders, fulfillment, production, integrations, dashboard, security, pricing)
+  src/worker.ts     worker do outbox (publicação, métricas, retenção)
+  migrations/       SQL versionado (001…010)
   test/             testes unitários (test/*.test.ts) e de integração (test/integration/)
-web/                frontend: painel React (Vite) + Dockerfile e nginx.conf
+web/                frontend: painel React (Vite) + Dockerfile e nginx.conf (cabeçalhos de segurança, CSP, proxy /api)
+scripts/            backup-db.sh
 compose.yaml        postgres, api, worker e web
 .env                configuração local compartilhada (a partir do .env.example)
-docs/               arquitetura e contratos da API
+docs/               arquitetura, contratos da API, tutorial e avaliação de arquitetura
 ```
 
 ## Solução de problemas
@@ -245,6 +268,9 @@ docs/               arquitetura e contratos da API
 | `address already in use` | outra aplicação usa a porta: troque `PORT` ou `API_HOST_PORT`/`WEB_HOST_PORT` no `.env` |
 | Painel abre, mas a API falha | API no ar? O proxy do Vite usa a `PORT` do `.env`; no Compose, `docker compose logs web api` |
 | 403 em toda escrita | o token CSRF mudou (novo login ou sessão expirada): recarregue a página |
+| `defina POSTGRES_PASSWORD no .env` ao subir o Compose | o `.env` foi criado antes desta variável existir: copie a linha do `.env.example` |
+| `worker` aparece `unhealthy` | `docker compose logs worker`; o healthcheck exige que o laço toque o heartbeat a cada 5 s |
+| Evento do outbox parado | `GET /outbox/dead` (ou a tela Integrações) mostra o erro; corrija o destino e use **Tentar de novo** |
 
 ## Limitações
 

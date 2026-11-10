@@ -6,18 +6,23 @@ IDs são UUID. Preços são inteiros em centavos (BRL). Gramas são texto decima
 
 ## Erros
 
-Formato único: `{ "error": "mensagem", "details"?: ... }`.
+Formato único: `{ "error": "mensagem", "code": "codigo_estavel", "details"?: ... }`. A mensagem é para a usuária e pode mudar de redação; o `code` é estável e é por ele que o painel decide o que mostrar.
 
-| Status | Quando | Exemplo |
-|---|---|---|
-| 400 | entrada inválida | `{"error":"Preço deve ser inteiro não negativo dentro do limite do banco"}` |
-| 401 | sem sessão | `{"error":"Autenticação necessária"}` |
-| 403 | escrita sem token CSRF | `{"error":"Token CSRF ausente ou inválido"}` |
-| 404 | recurso inexistente | `{"error":"Pedido não encontrado"}` |
-| 409 | conflito de estado ou estoque | `{"error":"Filamento insuficiente para iniciar a impressão","details":{"materials":[{"color":"Rosa","requiredGrams":"60.000","availableGrams":"50.000"}]}}` |
-| 413 | corpo acima de 32 kB | `{"error":"Corpo da requisição grande demais"}` |
-| 429 | muitas tentativas de login | `{"error":"Muitas tentativas de login. Tente novamente mais tarde."}` |
-| 500 | erro inesperado (log interno) | `{"error":"Erro interno"}` |
+| Status | `code` | Quando | Exemplo |
+|---|---|---|---|
+| 400 | `validation` | entrada inválida | `{"error":"Preço deve ser inteiro não negativo dentro do limite do banco","code":"validation"}` |
+| 400 | `invalid_json` | corpo não é JSON | `{"error":"JSON inválido","code":"invalid_json"}` |
+| 401 | `unauthorized` | sem sessão | `{"error":"Autenticação necessária","code":"unauthorized"}` |
+| 403 | `csrf` | escrita sem token CSRF | `{"error":"Token CSRF ausente ou inválido","code":"csrf"}` |
+| 404 | `not_found` | recurso ou rota inexistente | `{"error":"Pedido não encontrado","code":"not_found"}` |
+| 409 | `conflict` | conflito de estado ou estoque | `{"error":"Filamento insuficiente para iniciar a impressão","code":"conflict","details":{"materials":[{"color":"Rosa","requiredGrams":"60.000","availableGrams":"50.000"}]}}` |
+| 409 | `sku_taken` | SKU já cadastrado | `{"error":"SKU já cadastrado","code":"sku_taken","details":{"sku":"CUBO-AZUL"}}` |
+| 409 | `concurrency` | outra transação alterou os mesmos dados (deadlock, lock_timeout) | `{"error":"Outra operação alterou os mesmos dados. Tente novamente.","code":"concurrency"}` |
+| 413 | `payload_too_large` | corpo acima de 32 kB (256 kB em `POST /imports/orders`) | `{"error":"Corpo da requisição grande demais","code":"payload_too_large"}` |
+| 429 | `rate_limited` | muitas tentativas de login | `{"error":"Muitas tentativas de login. Tente novamente mais tarde.","code":"rate_limited"}` |
+| 500 | `internal` | erro inesperado (log interno) | `{"error":"Erro interno","code":"internal"}` |
+
+Toda resposta leva `X-Request-Id` (o id do nginx, quando a chamada passa pelo painel, ou um UUID gerado pela API). Ele aparece na linha de log da requisição: cite-o ao relatar um problema.
 
 ## Autenticação
 
@@ -32,12 +37,22 @@ Toda escrita envia `X-CSRF-Token`. Cookie de sessão: `tres_eixos_sid`.
 
 Públicas: `GET /health` (processo) e `GET /ready` (banco). Todas as demais exigem sessão.
 
+## Operação
+
+| Rota | Resposta |
+|---|---|
+| `GET /dashboard/summary` | tudo que a visão geral mostra, em uma requisição: `orders.byStatus` (contagem por status), `orders.overdue`, `production` (`queued`, `printing`, `onHold`, `blocked`, `pieces`), `upcomingShipments` (até 6 pedidos em aberto por prazo), `lowStock` (até 6 produtos ativos com menos peças livres), `lowFilament` (até 6 materiais com menos gramas livres) |
+| `GET /metrics` | contadores desta instância da API (requisições, 409, 500, latência por rota) e situação do outbox (`pending`, `oldestPendingAgeSeconds`, `dead`) |
+| `GET /outbox/dead` | eventos do outbox que esgotaram as 20 tentativas de publicação; enquanto estão aqui, os eventos seguintes do mesmo pedido esperam |
+| `POST /outbox/:id/retry` | devolve o evento à fila com as tentativas zeradas; 404 se não estiver na dead-letter |
+
 ## Catálogo
 
 | Rota | Corpo / query | Resposta |
 |---|---|---|
 | `POST /products` | `{ sku, name, priceCents }` | 201 + `Location`; 409 se o SKU existir |
 | `GET /products` | `?search=&active=true\|false&page=&pageSize=` | página de produtos (`active` diferente de `true`/`false` → 400) |
+| `GET /products/by-sku/:sku` | — | produto pelo SKU exato (normalizado para maiúsculas); 404 se não existir |
 | `GET /products/:id` | — | produto |
 | `PATCH /products/:id` | `{ name?, priceCents?, active? }` (id e SKU imutáveis) | produto |
 
@@ -45,7 +60,7 @@ Públicas: `GET /health` (processo) e `GET /ready` (banco). Todas as demais exig
 
 | Rota | Corpo / query | Observação |
 |---|---|---|
-| `GET /inventory` | `?search=` | physical, reserved, available, openProduction |
+| `GET /inventory` | `?search=&active=true\|false` | sku, name, priceCents, physical, reserved, available, openProduction (o painel usa esta lista como catálogo) |
 | `GET /inventory/:productId` | — | saldo de um produto |
 | `GET /inventory/movements` | `?productId=&orderId=` | histórico de auditoria |
 | `POST /inventory/adjustments` | `{ productId, delta, reason }` | `Idempotency-Key` opcional; 409 se o físico ficar abaixo do reservado |
@@ -72,7 +87,7 @@ A resposta 201 traz o pedido com itens, reserva por item, jobs de produção, ex
 
 | Rota | Efeito |
 |---|---|
-| `GET /orders` | `?status=` — ordenado por prazo de envio, depois data do pedido |
+| `GET /orders` | `?status=&overdue=true` — ordenado por prazo de envio, depois data do pedido |
 | `GET /orders/:id` | detalhes |
 | `POST /orders/:id/cancel` | `{ reason? }` — libera reservas uma vez; produção vai para `on_hold`; 409 se já enviado |
 | `POST /orders/:id/allocation` | nova tentativa de reserva |
@@ -128,12 +143,14 @@ Sem preço possível (`suggested: null`) quando tarifa + imposto + margem ≥ 10
 
 | Rota | Efeito |
 |---|---|
-| `POST /imports/orders` | `{ orders: [...] }` (até 50), origem sempre `"simulador"` |
+| `POST /imports/orders` | `{ orders: [...] }` (até 50 pedidos de até 50 itens; corpo até 256 kB), origem sempre `"simulador"` |
 | `POST /integrations/simulator/sync` | roda o conector simulado (pedido normal, SKU não mapeado e item sem estoque) |
 | `GET /integrations/channels` | canais (`manual`, `simulator`) |
 | `GET /integrations/pending-skus` | SKUs externos sem correspondência |
 | `PUT /integrations/sku-mappings` | `{ channelId?, externalSku, productId }` — resolve a pendência e reprocessa os pedidos |
 | `GET /integrations/errors` | falhas de importação com tentativas e último erro |
+
+Webhook do outbox (`OUTBOX_WEBHOOK_URL`): `POST` com o evento `{ id, topic, aggregateType, aggregateId, payload, createdAt, attempts }` e o cabeçalho `Idempotency-Key: <id>`. Com `OUTBOX_WEBHOOK_SECRET`, cada envio leva `X-Signature-Timestamp` (segundos Unix) e `X-Signature-256: sha256=<hex>`, o HMAC-SHA256 de `"<timestamp>.<corpo>"` com o segredo; o receptor recalcula, compara em tempo constante e rejeita timestamps antigos.
 
 Pedido externo:
 
