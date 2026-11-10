@@ -1,6 +1,6 @@
 // Regras puras de custo e preço. Só inteiros: centavos, minutos, miligramas e pontos-base
 // (1% = 100 bp). Sem banco nem HTTP, para serem testadas isoladamente.
-import { gramsToMilli } from "../production/production-rules.js"
+import { gramsToMilli } from "../grams.js"
 
 const BP = 10_000n
 

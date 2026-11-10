@@ -7,7 +7,7 @@ import {
   reserveIfAvailable,
 } from "../inventory/inventory-repository.js"
 import { productionShortage } from "../inventory/rules.js"
-import { enqueueOutbox } from "../outbox.js"
+import { enqueueOutbox } from "../outbox/enqueue.js"
 import { cancelQueuedJobsForItem, insertJobHistory, insertOrderJob } from "../production/production-repository.js"
 import {
   getOrderStatus,
@@ -16,9 +16,13 @@ import {
   lockWaitingItemsForProduct,
   updateStatus,
   type UnreservedItem,
-} from "./order-repository.js"
-import { ALLOCATING_STATUSES, deriveAllocationStatus, type OrderStatus } from "./order-rules.js"
-import { insertReservation, listActiveReservations, setReservationStatus } from "./reservation-repository.js"
+} from "../orders/order-repository.js"
+import { ALLOCATING_STATUSES, deriveAllocationStatus, type OrderStatus } from "../orders/order-rules.js"
+import { insertReservation, listActiveReservations, setReservationStatus } from "../orders/reservation-repository.js"
+
+// Fulfillment: o serviço de domínio que atravessa pedidos, estoque e produção (reservar, enfileirar
+// produção para a falta, realocar quando entra saldo, liberar reservas). Mora em módulo próprio para
+// que nenhum dos três precise importar os outros. Ordem de locks: pedido → jobs → estoque → materiais.
 
 /**
  * O item acabou de ser reservado com peças já prontas: um job ainda não iniciado para ele

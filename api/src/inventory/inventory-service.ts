@@ -1,9 +1,8 @@
 import { randomUUID } from "node:crypto"
-import { withTransaction, type Tx } from "../db.js"
+import { pool, withTransaction, type Tx } from "../db.js"
 import { ConflictError, NotFoundError } from "../http/errors.js"
 import { runIdempotent, type StoredResponse } from "../http/idempotency.js"
 import { isUuid } from "../http/validation.js"
-import { allocateWaitingForProduct } from "../orders/allocation.js"
 import { toPage, type Page, type PageRequest } from "../pagination.js"
 import type { AdjustmentInput } from "./inventory-input.js"
 import {
@@ -20,6 +19,7 @@ import {
   type MovementFilter,
 } from "./inventory-repository.js"
 import { canAdjust } from "./rules.js"
+import { notifyStockIncreased } from "./stock-events.js"
 
 type InventoryBalance = InventoryRow & { available: number }
 
@@ -64,21 +64,22 @@ async function applyAdjustment(tx: Tx, input: AdjustmentInput, operationKey: str
   })
   const inventory = await applyInventoryDelta(tx, input.productId, input.delta, 0)
   if (input.delta <= 0) return inventory
-  await allocateWaitingForProduct(tx, input.productId)
+  // Saldo subiu: o fulfillment (registrado em app.ts) reserva para os pedidos em espera.
+  await notifyStockIncreased(tx, input.productId)
   return (await lockInventory(tx, [input.productId])).get(input.productId)!
 }
 
 export async function getInventory(filter: InventoryFilter, page: PageRequest): Promise<Page<InventoryItem>> {
-  return toPage(page, await listInventory(filter, page))
+  return toPage(page, await listInventory(pool, filter, page))
 }
 
 export async function getMovements(filter: MovementFilter, page: PageRequest): Promise<Page<Movement>> {
-  return toPage(page, await listMovements(filter, page))
+  return toPage(page, await listMovements(pool, filter, page))
 }
 
 export async function getProductInventory(productId: string): Promise<InventoryBalance> {
   if (!isUuid(productId)) throw new NotFoundError("Produto não encontrado")
-  const inventory = await findInventory(productId)
+  const inventory = await findInventory(pool, productId)
   if (!inventory) throw new NotFoundError("Produto não encontrado")
   return withAvailable(inventory)
 }

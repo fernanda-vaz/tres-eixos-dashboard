@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { pool, type Queryable } from "../db.js"
+import type { Queryable } from "../db.js"
 import type { ChannelInput } from "./pricing-input.js"
 import type { CostSheet, MaterialUsage, PricingSettings, SalesChannel } from "./pricing-rules.js"
 
@@ -26,13 +26,13 @@ const toSettings = (row: SettingsRow): PricingSettings => ({
   taxRateBp: row.tax_rate_bp,
 })
 
-export async function findSettings(db: Queryable = pool): Promise<PricingSettings> {
+export async function findSettings(db: Queryable): Promise<PricingSettings> {
   const result = await db.query<SettingsRow>(`SELECT ${SETTINGS_COLUMNS} FROM pricing_settings WHERE id`)
   return toSettings(result.rows[0])
 }
 
-export async function saveSettings(settings: PricingSettings): Promise<PricingSettings> {
-  const result = await pool.query<SettingsRow>(
+export async function saveSettings(db: Queryable, settings: PricingSettings): Promise<PricingSettings> {
+  const result = await db.query<SettingsRow>(
     `UPDATE pricing_settings SET energy_cents_per_kwh = $1, printer_power_watts = $2, printer_price_cents = $3,
        printer_lifetime_hours = $4, labor_cents_per_hour = $5, failure_rate_bp = $6, tax_rate_bp = $7, updated_at = now()
      WHERE id RETURNING ${SETTINGS_COLUMNS}`,
@@ -59,7 +59,7 @@ const toChannel = (row: ChannelRow): SalesChannel => ({
   active: row.active,
 })
 
-export async function listChannels(onlyActive: boolean, db: Queryable = pool): Promise<SalesChannel[]> {
+export async function listChannels(db: Queryable, onlyActive: boolean): Promise<SalesChannel[]> {
   const result = await db.query<ChannelRow>(
     `SELECT id, name, fee_bp, fixed_fee_cents, active FROM pricing_channels
      WHERE ($1::boolean = false OR active) ORDER BY created_at, id`,
@@ -68,8 +68,8 @@ export async function listChannels(onlyActive: boolean, db: Queryable = pool): P
   return result.rows.map(toChannel)
 }
 
-export async function insertChannel(channel: ChannelInput): Promise<SalesChannel> {
-  const result = await pool.query<ChannelRow>(
+export async function insertChannel(db: Queryable, channel: ChannelInput): Promise<SalesChannel> {
+  const result = await db.query<ChannelRow>(
     `INSERT INTO pricing_channels (id, name, fee_bp, fixed_fee_cents, active) VALUES ($1, $2, $3, $4, $5)
      RETURNING id, name, fee_bp, fixed_fee_cents, active`,
     [randomUUID(), channel.name, channel.feeBp, channel.fixedFeeCents, channel.active],
@@ -77,8 +77,8 @@ export async function insertChannel(channel: ChannelInput): Promise<SalesChannel
   return toChannel(result.rows[0])
 }
 
-export async function updateChannel(id: string, patch: Partial<ChannelInput>): Promise<SalesChannel | null> {
-  const result = await pool.query<ChannelRow>(
+export async function updateChannel(db: Queryable, id: string, patch: Partial<ChannelInput>): Promise<SalesChannel | null> {
+  const result = await db.query<ChannelRow>(
     `UPDATE pricing_channels SET
        name = COALESCE($2, name), fee_bp = COALESCE($3, fee_bp),
        fixed_fee_cents = COALESCE($4, fixed_fee_cents), active = COALESCE($5, active)
@@ -109,7 +109,7 @@ const toSheet = (row: SheetRow): CostSheet => ({
 })
 
 /** Ficha salva do produto, ou null se ainda não foi preenchida. */
-export async function findCostSheet(productId: string, db: Queryable = pool): Promise<CostSheet | null> {
+export async function findCostSheet(db: Queryable, productId: string): Promise<CostSheet | null> {
   const result = await db.query<SheetRow>(
     `SELECT product_id, print_minutes, purge_grams::text AS purge_grams, labor_minutes, packaging_cents,
             extra_cents, target_margin_bp
@@ -119,8 +119,8 @@ export async function findCostSheet(productId: string, db: Queryable = pool): Pr
   return result.rows[0] ? toSheet(result.rows[0]) : null
 }
 
-export async function upsertCostSheet(productId: string, sheet: CostSheet): Promise<void> {
-  await pool.query(
+export async function upsertCostSheet(db: Queryable, productId: string, sheet: CostSheet): Promise<void> {
+  await db.query(
     `INSERT INTO product_cost_sheets
        (product_id, print_minutes, purge_grams, labor_minutes, packaging_cents, extra_cents, target_margin_bp)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -133,7 +133,7 @@ export async function upsertCostSheet(productId: string, sheet: CostSheet): Prom
 }
 
 /** Linhas da receita de filamento com o preço por kg de cada material. */
-export async function listMaterialUsage(productId: string, db: Queryable = pool): Promise<MaterialUsage[]> {
+export async function listMaterialUsage(db: Queryable, productId: string): Promise<MaterialUsage[]> {
   const result = await db.query<{ material_id: string; name: string; color: string; grams: string; cost_per_kg_cents: number }>(
     `SELECT m.id AS material_id, m.name, m.color, pm.grams_per_unit::text AS grams, m.cost_per_kg_cents
      FROM product_materials pm JOIN materials m ON m.id = pm.material_id
@@ -150,9 +150,9 @@ export async function listMaterialUsage(productId: string, db: Queryable = pool)
 }
 
 /** Fichas salvas de vários produtos em uma consulta (para listagens). */
-export async function findCostSheets(productIds: string[]): Promise<Map<string, CostSheet>> {
+export async function findCostSheets(db: Queryable, productIds: string[]): Promise<Map<string, CostSheet>> {
   if (!productIds.length) return new Map()
-  const result = await pool.query<SheetRow>(
+  const result = await db.query<SheetRow>(
     `SELECT product_id, print_minutes, purge_grams::text AS purge_grams, labor_minutes, packaging_cents,
             extra_cents, target_margin_bp
      FROM product_cost_sheets WHERE product_id = ANY($1::uuid[])`,
@@ -162,10 +162,10 @@ export async function findCostSheets(productIds: string[]): Promise<Map<string, 
 }
 
 /** Receitas de vários produtos em uma consulta, agrupadas por produto. */
-export async function listMaterialUsageByProduct(productIds: string[]): Promise<Map<string, MaterialUsage[]>> {
+export async function listMaterialUsageByProduct(db: Queryable, productIds: string[]): Promise<Map<string, MaterialUsage[]>> {
   const byProduct = new Map<string, MaterialUsage[]>()
   if (!productIds.length) return byProduct
-  const result = await pool.query<{ product_id: string; material_id: string; name: string; color: string; grams: string; cost_per_kg_cents: number }>(
+  const result = await db.query<{ product_id: string; material_id: string; name: string; color: string; grams: string; cost_per_kg_cents: number }>(
     `SELECT pm.product_id, m.id AS material_id, m.name, m.color, pm.grams_per_unit::text AS grams, m.cost_per_kg_cents
      FROM product_materials pm JOIN materials m ON m.id = pm.material_id
      WHERE pm.product_id = ANY($1::uuid[]) ORDER BY m.name, m.color`,

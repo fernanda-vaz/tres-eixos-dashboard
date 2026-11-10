@@ -1,4 +1,5 @@
 import pg from "pg"
+import { logger } from "./logger.js"
 import type { PageRequest } from "./pagination.js"
 
 if (!process.env.DATABASE_URL) {
@@ -12,7 +13,7 @@ export const pool = new pg.Pool({
 })
 
 pool.on("error", (error) => {
-  console.error("Erro em conexão ociosa do PostgreSQL", error)
+  logger.error({ err: error }, "Erro em conexão ociosa do PostgreSQL")
 })
 
 export type Tx = pg.PoolClient
@@ -53,18 +54,21 @@ export async function withTransaction<T>(work: (tx: Tx) => Promise<T>): Promise<
 }
 
 /**
- * Lista uma página e conta o total do mesmo filtro, em paralelo no pool.
+ * Lista uma página e conta o total do mesmo filtro. No pool as duas consultas correm em paralelo
+ * (conexões diferentes, sem snapshot comum: sob escrita concorrente o total pode divergir da
+ * página por uma linha); em um client de transação, uma após a outra.
  * `listSql` recebe os parâmetros do filtro seguidos de LIMIT e OFFSET; `countSql`, só os do filtro.
  */
 export async function queryPage<R extends pg.QueryResultRow>(
+  db: Queryable,
   listSql: string,
   countSql: string,
   params: unknown[],
   page: PageRequest,
 ): Promise<{ rows: R[]; total: number }> {
   const [rows, count] = await Promise.all([
-    pool.query<R>(listSql, [...params, page.pageSize, page.offset]),
-    pool.query<{ total: string }>(countSql, params),
+    db.query<R>(listSql, [...params, page.pageSize, page.offset]),
+    db.query<{ total: string }>(countSql, params),
   ])
   return { rows: rows.rows, total: Number(count.rows[0].total) }
 }

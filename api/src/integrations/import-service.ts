@@ -1,4 +1,4 @@
-import { withTransaction, type Tx } from "../db.js"
+import { pool, withTransaction, type Tx } from "../db.js"
 import { ConflictError, ValidationError } from "../http/errors.js"
 import { findOrderIdByExternal, lockOrder, updateExternalStatus } from "../orders/order-repository.js"
 import { externalStatusRank, shouldApplyExternalStatus } from "../orders/order-rules.js"
@@ -114,13 +114,13 @@ async function createImportedOrder(tx: Tx, channelId: string, order: ExternalOrd
 async function applyAndTrack(channelId: string, order: ExternalOrder): Promise<ImportOutcome> {
   try {
     const outcome = await applyExternalOrder(channelId, order)
-    await clearOrderFailure(channelId, order.externalOrderId)
+    await clearOrderFailure(pool, channelId, order.externalOrderId)
     return outcome
   } catch (error) {
     // Dois envios simultâneos do mesmo pedido novo: o segundo esbarra na UNIQUE e é uma duplicata.
     if (error instanceof ConflictError) return "duplicate"
     const message = (error instanceof Error ? error.message : String(error)).slice(0, 500)
-    await recordOrderFailure(channelId, order.externalOrderId, message)
+    await recordOrderFailure(pool, channelId, order.externalOrderId, message)
     return "failed"
   }
 }
@@ -144,7 +144,7 @@ export async function syncChannel(
   connector: MarketplaceConnector,
   retry: RetryOptions = DEFAULT_RETRY,
 ): Promise<SyncResult> {
-  let cursor = await findCursor(channelId)
+  let cursor = await findCursor(pool, channelId)
   const summary = emptySummary()
   try {
     for (;;) {
@@ -152,14 +152,14 @@ export async function syncChannel(
       await importPage(channelId, connector, page, summary, retry)
       if (!page.nextCursor) break
       cursor = page.nextCursor
-      await saveCursor(channelId, cursor)
+      await saveCursor(pool, channelId, cursor)
     }
   } catch (error) {
     if (!(error instanceof ConnectorError)) throw error
     return { ...summary, status: "interrupted", cursor, error: `${error.kind}: ${error.message}` }
   }
   // Ciclo completo: a próxima sincronização relê desde o início e reconcilia status externos.
-  await deleteCursor(channelId)
+  await deleteCursor(pool, channelId)
   return { ...summary, status: "completed", cursor: null }
 }
 
@@ -178,7 +178,7 @@ async function importPage(
       // Pedido listado mas não encontrado (ex.: apagado no provedor): registra e segue. Sem isso, a
       // sincronização pararia sempre nesta página. Falhas temporárias continuam interrompendo.
       if (!(error instanceof ConnectorError) || error.kind !== "not_found") throw error
-      await recordOrderFailure(channelId, entry.externalOrderId, `Pedido não encontrado no provedor: ${error.message}`.slice(0, 500))
+      await recordOrderFailure(pool, channelId, entry.externalOrderId, `Pedido não encontrado no provedor: ${error.message}`.slice(0, 500))
       addToSummary(summary, entry.externalOrderId, "failed")
       continue
     }
@@ -188,7 +188,7 @@ async function importPage(
     } catch (error) {
       // Pedido malformado vindo do provedor: vira erro de integração visível, sem derrubar a sincronização.
       if (!(error instanceof ValidationError)) throw error
-      await recordOrderFailure(channelId, entry.externalOrderId, `Pedido inválido do provedor: ${error.message}`.slice(0, 500))
+      await recordOrderFailure(pool, channelId, entry.externalOrderId, `Pedido inválido do provedor: ${error.message}`.slice(0, 500))
       addToSummary(summary, entry.externalOrderId, "failed")
       continue
     }
@@ -197,9 +197,9 @@ async function importPage(
 }
 
 export function listIntegrationErrors(): Promise<IntegrationError[]> {
-  return listFailedEvents()
+  return listFailedEvents(pool)
 }
 
 export function listChannels(): Promise<Channel[]> {
-  return listChannelRows()
+  return listChannelRows(pool)
 }

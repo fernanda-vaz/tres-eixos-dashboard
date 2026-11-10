@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { pool, queryPage, type Queryable, type Tx } from "../db.js"
+import { queryPage, type Queryable, type Tx } from "../db.js"
 import type { PageRequest } from "../pagination.js"
 import { likePattern } from "../sql.js"
 
@@ -42,8 +42,8 @@ const toMaterial = (row: MaterialRow): Material => ({
   active: row.active,
 })
 
-export async function insertMaterial(material: NewMaterial): Promise<Material> {
-  const result = await pool.query<MaterialRow>(
+export async function insertMaterial(db: Queryable, material: NewMaterial): Promise<Material> {
+  const result = await db.query<MaterialRow>(
     `INSERT INTO materials (id, name, color, cost_per_kg_cents) VALUES ($1, $2, $3, $4) RETURNING ${COLUMNS}`,
     [randomUUID(), material.name, material.color, material.costPerKgCents],
   )
@@ -51,16 +51,17 @@ export async function insertMaterial(material: NewMaterial): Promise<Material> {
 }
 
 /** Atualiza o preço pago por quilo do filamento (usado na calculadora de custos). */
-export async function updateMaterialCost(id: string, costPerKgCents: number): Promise<Material | null> {
-  const result = await pool.query<MaterialRow>(
+export async function updateMaterialCost(db: Queryable, id: string, costPerKgCents: number): Promise<Material | null> {
+  const result = await db.query<MaterialRow>(
     `UPDATE materials SET cost_per_kg_cents = $2 WHERE id = $1 RETURNING ${COLUMNS}`,
     [id, costPerKgCents],
   )
   return result.rows[0] ? toMaterial(result.rows[0]) : null
 }
 
-export async function listMaterials(color: string | null, page: PageRequest): Promise<{ items: Material[]; total: number }> {
+export async function listMaterials(db: Queryable, color: string | null, page: PageRequest): Promise<{ items: Material[]; total: number }> {
   const { rows, total } = await queryPage<MaterialRow>(
+    db,
     `SELECT ${COLUMNS} FROM materials WHERE ($1::text IS NULL OR color ILIKE $1)
      ORDER BY name, color LIMIT $2 OFFSET $3`,
     "SELECT count(*) AS total FROM materials WHERE ($1::text IS NULL OR color ILIKE $1)",
@@ -68,6 +69,15 @@ export async function listMaterials(color: string | null, page: PageRequest): Pr
     page,
   )
   return { items: rows.map(toMaterial), total }
+}
+
+/** Materiais ativos com menos gramas livres (visão geral). */
+export async function listLowestAvailable(db: Queryable, limit: number): Promise<Material[]> {
+  const result = await db.query<MaterialRow>(
+    `SELECT ${COLUMNS} FROM materials WHERE active ORDER BY (physical_grams - reserved_grams), name, color LIMIT $1`,
+    [limit],
+  )
+  return result.rows.map(toMaterial)
 }
 
 /**
@@ -122,16 +132,16 @@ export async function listRecipe(db: Queryable, productId: string): Promise<Reci
   }))
 }
 
-export async function upsertRecipeLine(productId: string, materialId: string, gramsPerUnit: string): Promise<void> {
-  await pool.query(
+export async function upsertRecipeLine(db: Queryable, productId: string, materialId: string, gramsPerUnit: string): Promise<void> {
+  await db.query(
     `INSERT INTO product_materials (product_id, material_id, grams_per_unit) VALUES ($1, $2, $3)
      ON CONFLICT (product_id, material_id) DO UPDATE SET grams_per_unit = EXCLUDED.grams_per_unit`,
     [productId, materialId, gramsPerUnit],
   )
 }
 
-export async function deleteRecipeLine(productId: string, materialId: string): Promise<void> {
-  await pool.query("DELETE FROM product_materials WHERE product_id = $1 AND material_id = $2", [productId, materialId])
+export async function deleteRecipeLine(db: Queryable, productId: string, materialId: string): Promise<void> {
+  await db.query("DELETE FROM product_materials WHERE product_id = $1 AND material_id = $2", [productId, materialId])
 }
 
 export type MaterialRequirement = {

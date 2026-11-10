@@ -1,6 +1,6 @@
 import { Router } from "express"
-import { parseProduct, parseProductId, parseProductListQuery, parseProductPatch } from "./product-input.js"
-import { createProduct, getProduct, getProducts, patchProduct } from "./product-service.js"
+import { parseProduct, parseProductId, parseProductListQuery, parseProductPatch, parseSku } from "./product-input.js"
+import { createProduct, getProduct, getProductBySku, getProducts, patchProduct } from "./product-service.js"
 
 export const catalogRouter = Router()
 
@@ -12,6 +12,11 @@ catalogRouter.post("/products", async (req, res) => {
 catalogRouter.get("/products", async (req, res) => {
   const { filter, page } = parseProductListQuery(req.query)
   res.json(await getProducts(filter, page))
+})
+
+// Antes de /products/:id: "by-sku" não é um id. O painel usa isto para ajustar estoque pelo SKU digitado.
+catalogRouter.get("/products/by-sku/:sku", async (req, res) => {
+  res.json(await getProductBySku(parseSku(req.params.sku)))
 })
 
 catalogRouter.get("/products/:id", async (req, res) => {

@@ -1,3 +1,5 @@
+import { gramsToMilli } from "../grams.js"
+
 export const JOB_STATUSES = ["queued", "printing", "on_hold", "done", "cancelled"] as const
 export type JobStatus = (typeof JOB_STATUSES)[number]
 
@@ -41,10 +43,5 @@ export function blockingMaterials(needs: MaterialNeed[]): MaterialNeed[] {
   return needs.filter((need) => gramsToMilli(need.availableGrams) < gramsToMilli(need.requiredGrams))
 }
 
-/** Compara gramas decimais sem ponto flutuante: "12.5" → 12500 miligramas. */
-export function gramsToMilli(grams: string): bigint {
-  const match = /^(-?)(\d+)(?:\.(\d{1,3}))?$/.exec(grams)
-  if (!match) throw new Error(`Gramas inválidos: ${grams}`)
-  const value = BigInt(match[2]) * 1000n + BigInt((match[3] ?? "").padEnd(3, "0"))
-  return match[1] ? -value : value
-}
+// Reexportado para quem compara gramas no contexto da produção; a implementação é compartilhada (grams.ts).
+export { gramsToMilli }

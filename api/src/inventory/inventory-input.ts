@@ -1,5 +1,5 @@
 import { ValidationError } from "../http/errors.js"
-import { allowOnly, parseInteger, parseObject, parsePagination, parseText, parseUuid, queryText } from "../http/validation.js"
+import { allowOnly, parseInteger, parseObject, parsePagination, parseText, parseUuid, queryBoolean, queryText } from "../http/validation.js"
 import type { PageRequest } from "../pagination.js"
 import type { InventoryFilter, MovementFilter } from "./inventory-repository.js"
 
@@ -21,7 +21,7 @@ export function parseAdjustment(value: unknown): AdjustmentInput {
 
 export function parseInventoryListQuery(query: unknown): { filter: InventoryFilter; page: PageRequest } {
   const page = parsePagination(query)
-  return { filter: { search: queryText(query, "search") }, page }
+  return { filter: { search: queryText(query, "search"), active: queryBoolean(query, "active") }, page }
 }
 
 export function parseMovementListQuery(query: unknown): { filter: MovementFilter; page: PageRequest } {

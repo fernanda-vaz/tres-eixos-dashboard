@@ -97,7 +97,7 @@ function toJob(row: JobRow): ProductionJob {
 
 export type JobFilter = { statuses: readonly JobStatus[]; color: string | null; dueBefore: Date | null }
 
-export async function listJobs(filter: JobFilter, page: PageRequest): Promise<{ items: ProductionJob[]; total: number }> {
+export async function listJobs(db: Queryable, filter: JobFilter, page: PageRequest): Promise<{ items: ProductionJob[]; total: number }> {
   const where = `
     WHERE j.status = ANY($1::text[])
       AND ($2::text IS NULL OR EXISTS (
@@ -105,6 +105,7 @@ export async function listJobs(filter: JobFilter, page: PageRequest): Promise<{ 
              WHERE pm.product_id = j.product_id AND m.color ILIKE $2))
       AND ($3::timestamptz IS NULL OR o.ship_by < $3)`
   const { rows, total } = await queryPage<JobRow>(
+    db,
     `${SELECT_JOBS} ${where}
      ORDER BY j.priority DESC, o.ship_by ASC NULLS LAST, o.ordered_at ASC NULLS LAST, j.created_at, j.id
      LIMIT $4 OFFSET $5`,

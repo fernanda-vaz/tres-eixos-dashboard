@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { pool, queryPage, type Tx } from "../db.js"
+import { queryPage, type Queryable, type Tx } from "../db.js"
 import type { PageRequest } from "../pagination.js"
 import { likePattern } from "../sql.js"
 
@@ -97,8 +97,8 @@ export async function lockInventory(tx: Tx, productIds: string[]): Promise<Map<s
   return new Map(result.rows.map((row) => [row.product_id, toInventory(row)]))
 }
 
-export async function findInventory(productId: string): Promise<InventoryRow | null> {
-  const result = await pool.query<Row>("SELECT product_id, physical, reserved FROM inventory WHERE product_id = $1", [
+export async function findInventory(db: Queryable, productId: string): Promise<InventoryRow | null> {
+  const result = await db.query<Row>("SELECT product_id, physical, reserved FROM inventory WHERE product_id = $1", [
     productId,
   ])
   return result.rows[0] ? toInventory(result.rows[0]) : null
@@ -130,52 +130,68 @@ export type InventoryItem = {
   sku: string
   name: string
   active: boolean
+  priceCents: number
   physical: number
   reserved: number
   available: number
   openProduction: number
 }
 
-export type InventoryFilter = { search?: string }
+export type InventoryFilter = { search?: string; active?: boolean }
+
+type InventoryItemRow = {
+  product_id: string
+  sku: string
+  name: string
+  active: boolean
+  price_cents: number
+  physical: number
+  reserved: number
+  open_production: string
+}
+
+const INVENTORY_ITEM_SELECT = `
+  SELECT i.product_id, p.sku, p.name, p.active, p.price_cents, i.physical, i.reserved,
+         (SELECT COALESCE(SUM(j.quantity), 0) FROM production_jobs j
+           WHERE j.product_id = i.product_id AND j.status IN ('queued', 'printing')) AS open_production
+  FROM inventory i JOIN products p ON p.id = i.product_id`
+
+const toInventoryItem = (row: InventoryItemRow): InventoryItem => ({
+  productId: row.product_id,
+  sku: row.sku,
+  name: row.name,
+  active: row.active,
+  priceCents: row.price_cents,
+  physical: row.physical,
+  reserved: row.reserved,
+  available: row.physical - row.reserved,
+  openProduction: Number(row.open_production),
+})
 
 export async function listInventory(
+  db: Queryable,
   filter: InventoryFilter,
   page: PageRequest,
 ): Promise<{ items: InventoryItem[]; total: number }> {
-  const where = "WHERE ($1::text IS NULL OR p.sku ILIKE $1 OR p.name ILIKE $1)"
-  const { rows, total } = await queryPage<{
-    product_id: string
-    sku: string
-    name: string
-    active: boolean
-    physical: number
-    reserved: number
-    open_production: string
-  }>(
-    `SELECT i.product_id, p.sku, p.name, p.active, i.physical, i.reserved,
-            (SELECT COALESCE(SUM(j.quantity), 0) FROM production_jobs j
-              WHERE j.product_id = i.product_id AND j.status IN ('queued', 'printing')) AS open_production
-     FROM inventory i JOIN products p ON p.id = i.product_id
-     ${where}
-     ORDER BY p.sku
-     LIMIT $2 OFFSET $3`,
+  const where = `WHERE ($1::text IS NULL OR p.sku ILIKE $1 OR p.name ILIKE $1)
+                   AND ($2::boolean IS NULL OR p.active = $2)`
+  const { rows, total } = await queryPage<InventoryItemRow>(
+    db,
+    `${INVENTORY_ITEM_SELECT} ${where} ORDER BY p.sku LIMIT $3 OFFSET $4`,
     `SELECT count(*) AS total FROM inventory i JOIN products p ON p.id = i.product_id ${where}`,
-    [filter.search ? likePattern(filter.search) : null],
+    [filter.search ? likePattern(filter.search) : null, filter.active ?? null],
     page,
   )
-  return {
-    items: rows.map((row) => ({
-      productId: row.product_id,
-      sku: row.sku,
-      name: row.name,
-      active: row.active,
-      physical: row.physical,
-      reserved: row.reserved,
-      available: row.physical - row.reserved,
-      openProduction: Number(row.open_production),
-    })),
-    total,
-  }
+  return { items: rows.map(toInventoryItem), total }
+}
+
+/** Produtos ativos com menos peças livres (visão geral). */
+export async function listLowestAvailable(db: Queryable, limit: number): Promise<InventoryItem[]> {
+  const result = await db.query<InventoryItemRow>(
+    `${INVENTORY_ITEM_SELECT} WHERE p.active ORDER BY (i.physical - i.reserved), p.sku LIMIT $1`,
+    [limit],
+  )
+  return result.rows.map(toInventoryItem)
 }
 
 export type Movement = {
@@ -193,6 +209,7 @@ export type Movement = {
 export type MovementFilter = { productId?: string; orderId?: string }
 
 export async function listMovements(
+  db: Queryable,
   filter: MovementFilter,
   page: PageRequest,
 ): Promise<{ items: Movement[]; total: number }> {
@@ -208,6 +225,7 @@ export async function listMovements(
     order_id: string | null
     created_at: Date
   }>(
+    db,
     `SELECT m.id, m.product_id, p.sku, m.kind, m.physical_delta, m.reserved_delta, m.reason, m.order_id, m.created_at
      FROM stock_movements m JOIN products p ON p.id = m.product_id
      ${where}

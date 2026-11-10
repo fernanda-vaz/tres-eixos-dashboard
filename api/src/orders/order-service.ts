@@ -3,11 +3,11 @@ import { pool, withTransaction, type Tx } from "../db.js"
 import { ConflictError, NotFoundError, ValidationError } from "../http/errors.js"
 import { runIdempotent, type StoredResponse } from "../http/idempotency.js"
 import { applyInventoryDelta, lockInventory, recordMovement } from "../inventory/inventory-repository.js"
-import { enqueueOutbox } from "../outbox.js"
+import { enqueueOutbox } from "../outbox/enqueue.js"
 import { toPage, type Page, type PageRequest } from "../pagination.js"
 import { pgConstraint, pgErrorCode } from "../pg-errors.js"
 import { holdJob, insertJobHistory, lockOpenJobsForOrder } from "../production/production-repository.js"
-import { allocateOrder, allocateWaitingForProduct, releaseReservations } from "./allocation.js"
+import { allocation } from "./allocation-port.js"
 import { MANUAL_CHANNEL_ID } from "./channels.js"
 import type { ManualOrderInput, OrderListFilter } from "./order-input.js"
 import { insertOrder, lockOrder, updateStatus, type LockedOrder, type NewOrder, type NewOrderItem } from "./order-repository.js"
@@ -30,7 +30,7 @@ export async function createOrderInTransaction(tx: Tx, order: NewOrder): Promise
     throw error
   }
   await lockOrder(tx, orderId)
-  await allocateOrder(tx, orderId, "Alocação inicial do pedido")
+  await allocation().allocateOrder(tx, orderId, "Alocação inicial do pedido")
   await enqueueOutbox(tx, "order.created", orderId, { channelId: order.channelId, externalOrderId: order.externalOrderId })
   return orderId
 }
@@ -74,7 +74,7 @@ async function catalogItems(tx: Tx, items: ManualOrderInput["items"]): Promise<N
 }
 
 export async function getOrders(filter: OrderListFilter, page: PageRequest): Promise<Page<OrderSummary>> {
-  return toPage(page, await listOrders(filter, page))
+  return toPage(page, await listOrders(pool, filter, page))
 }
 
 export async function getOrder(orderId: string): Promise<OrderView> {
@@ -104,11 +104,11 @@ export async function cancelOrderInTransaction(tx: Tx, order: LockedOrder, reaso
 
   await holdOpenJobs(tx, order.id)
   // Ordem de locks: pedido → jobs → estoque (a mesma da conclusão de produção: job → estoque).
-  const releasedProducts = await releaseReservations(tx, order.id, `Cancelamento: ${reason}`)
+  const releasedProducts = await allocation().releaseReservations(tx, order.id, `Cancelamento: ${reason}`)
   await updateStatus(tx, order.id, order.status, "cancelled", reason)
   await enqueueOutbox(tx, "order.cancelled", order.id, { reason })
   for (const productId of releasedProducts) {
-    await allocateWaitingForProduct(tx, productId)
+    await allocation().allocateWaitingForProduct(tx, productId)
   }
 }
 
@@ -132,7 +132,7 @@ export function retryAllocation(orderId: string): Promise<OrderView> {
   return withTransaction(async (tx) => {
     const order = await lockExisting(tx, orderId)
     if (order.status === "awaiting_stock" || order.status === "pending_mapping") {
-      await allocateOrder(tx, orderId, "Nova tentativa de alocação")
+      await allocation().allocateOrder(tx, orderId, "Nova tentativa de alocação")
     }
     return view(tx, orderId)
   })

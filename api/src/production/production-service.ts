@@ -10,8 +10,8 @@ import {
   releaseMaterialGrams,
   reserveMaterialGrams,
 } from "../inventory/material-repository.js"
-import { allocateWaitingForProduct } from "../orders/allocation.js"
-import { enqueueOutbox } from "../outbox.js"
+import { notifyStockIncreased } from "../inventory/stock-events.js"
+import { enqueueOutbox } from "../outbox/enqueue.js"
 import { toPage, type Page, type PageRequest } from "../pagination.js"
 import { pgErrorCode } from "../pg-errors.js"
 import type { HeldJobDecision, PriorityChange, StockJobInput } from "./production-input.js"
@@ -37,7 +37,7 @@ const JOB_NOT_FOUND = "Job de produção não encontrado"
 
 /** Fila de produção com filtros por estado, cor e prazo. */
 export async function getJobs(filter: JobFilter, page: PageRequest): Promise<Page<ProductionJob>> {
-  return toPage(page, await listJobs(filter, page))
+  return toPage(page, await listJobs(pool, filter, page))
 }
 
 // ID inválido responde 404: para quem consulta, é um job que não existe.
@@ -139,7 +139,8 @@ export function completeJob(jobId: string, actualGrams: Map<string, string>): Pr
     await consumeJobMaterials(tx, jobId, actualGrams)
     await transition(tx, job, "done", "Produção concluída", "complete")
     await enqueueOutbox(tx, "production.completed", jobId, { productId: job.productId, quantity: job.quantity })
-    await allocateWaitingForProduct(tx, job.productId)
+    // Peças prontas entraram: o fulfillment (registrado em app.ts) reserva para os pedidos em espera.
+    await notifyStockIncreased(tx, job.productId)
     return loadJob(tx, jobId)
   })
 }

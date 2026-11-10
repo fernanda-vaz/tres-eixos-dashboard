@@ -2,27 +2,38 @@
 // Uso: npm run user:create -- --email voce@exemplo.com --name "Seu nome"
 // A senha é lida da variável NEW_PASSWORD ou digitada sem eco no terminal.
 import { randomUUID } from "node:crypto"
-import readline from "node:readline"
 import { parseArgs } from "node:util"
 import { pool } from "../db.js"
 import { pgErrorCode } from "../pg-errors.js"
 import { hashPassword, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from "../security/password.js"
+import { insertUser } from "../security/user-repository.js"
 
+/** Lê uma linha do terminal em modo raw (sem eco), só com a API pública do Node. */
 function askHidden(question: string): Promise<string> {
-  if (!process.stdin.isTTY) throw new Error("Terminal não interativo: informe a senha em NEW_PASSWORD")
-  const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true })
-  const output = rl as unknown as { _writeToOutput: (text: string) => void; output: NodeJS.WritableStream }
-  let muted = false
-  output._writeToOutput = (text) => {
-    if (!muted) output.output.write(text)
-  }
-  return new Promise((resolve) => {
-    rl.question(question, (answer) => {
-      rl.close()
+  const stdin = process.stdin
+  if (!stdin.isTTY) throw new Error("Terminal não interativo: informe a senha em NEW_PASSWORD")
+  process.stdout.write(question)
+  stdin.setRawMode(true)
+  stdin.resume()
+  stdin.setEncoding("utf8")
+  let answer = ""
+  return new Promise((resolve, reject) => {
+    const finish = (error?: Error) => {
+      stdin.setRawMode(false)
+      stdin.pause()
+      stdin.off("data", onData)
       process.stdout.write("\n")
-      resolve(answer)
-    })
-    muted = true
+      error ? reject(error) : resolve(answer)
+    }
+    const onData = (chunk: string) => {
+      for (const char of chunk) {
+        if (char === "\u0003") return finish(new Error("Cancelado"))
+        if (char === "\r" || char === "\n") return finish()
+        if (char === "\u007f" || char === "\b") answer = answer.slice(0, -1)
+        else answer += char
+      }
+    }
+    stdin.on("data", onData)
   })
 }
 
@@ -37,12 +48,7 @@ try {
   if (password.length < PASSWORD_MIN_LENGTH || password.length > PASSWORD_MAX_LENGTH) {
     throw new Error(`A senha deve ter de ${PASSWORD_MIN_LENGTH} a ${PASSWORD_MAX_LENGTH} caracteres`)
   }
-  await pool.query("INSERT INTO users (id, email, name, password_hash) VALUES ($1, $2, $3, $4)", [
-    randomUUID(),
-    email,
-    name,
-    await hashPassword(password),
-  ])
+  await insertUser(pool, { id: randomUUID(), email, name, passwordHash: await hashPassword(password) })
   console.log(`Usuária criada: ${email}`)
 } catch (error) {
   process.exitCode = 1

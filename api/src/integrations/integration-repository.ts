@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto"
-import { pool, type Tx } from "../db.js"
+import type { Queryable, Tx } from "../db.js"
 
 // integration_events, import_cursors, external_skus e sales_channels.
 
@@ -27,8 +27,8 @@ export async function finishEvent(tx: Tx, id: string, status: "processed" | "ign
 // Uma linha de falha por pedido externo: novas falhas só incrementam as tentativas.
 const failureEventId = (externalOrderId: string) => `failure:order:${externalOrderId}`
 
-export async function recordOrderFailure(channelId: string, externalOrderId: string, message: string): Promise<void> {
-  await pool.query(
+export async function recordOrderFailure(db: Queryable, channelId: string, externalOrderId: string, message: string): Promise<void> {
+  await db.query(
     `INSERT INTO integration_events (id, channel_id, event_id, event_type, payload, status, attempts, last_error)
      VALUES ($1, $2, $3, 'order_failure', $4, 'failed', 1, $5)
      ON CONFLICT (channel_id, event_id)
@@ -37,8 +37,8 @@ export async function recordOrderFailure(channelId: string, externalOrderId: str
   )
 }
 
-export async function clearOrderFailure(channelId: string, externalOrderId: string): Promise<void> {
-  await pool.query(
+export async function clearOrderFailure(db: Queryable, channelId: string, externalOrderId: string): Promise<void> {
+  await db.query(
     "UPDATE integration_events SET status = 'processed', processed_at = now() WHERE channel_id = $1 AND event_id = $2 AND status = 'failed'",
     [channelId, failureEventId(externalOrderId)],
   )
@@ -46,8 +46,8 @@ export async function clearOrderFailure(channelId: string, externalOrderId: stri
 
 export type IntegrationError = { eventId: string; attempts: number; lastError: string | null; receivedAt: Date; payload: unknown }
 
-export async function listFailedEvents(): Promise<IntegrationError[]> {
-  const result = await pool.query<{ event_id: string; attempts: number; last_error: string | null; received_at: Date; payload: unknown }>(
+export async function listFailedEvents(db: Queryable): Promise<IntegrationError[]> {
+  const result = await db.query<{ event_id: string; attempts: number; last_error: string | null; received_at: Date; payload: unknown }>(
     `SELECT event_id, attempts, last_error, received_at, payload FROM integration_events
      WHERE status = 'failed' ORDER BY received_at DESC LIMIT 100`,
   )
@@ -60,23 +60,23 @@ export async function listFailedEvents(): Promise<IntegrationError[]> {
   }))
 }
 
-export async function findCursor(channelId: string): Promise<string | null> {
-  const result = await pool.query<{ cursor: string | null }>("SELECT cursor FROM import_cursors WHERE channel_id = $1", [
+export async function findCursor(db: Queryable, channelId: string): Promise<string | null> {
+  const result = await db.query<{ cursor: string | null }>("SELECT cursor FROM import_cursors WHERE channel_id = $1", [
     channelId,
   ])
   return result.rows[0]?.cursor ?? null
 }
 
-export async function saveCursor(channelId: string, cursor: string): Promise<void> {
-  await pool.query(
+export async function saveCursor(db: Queryable, channelId: string, cursor: string): Promise<void> {
+  await db.query(
     `INSERT INTO import_cursors (channel_id, cursor) VALUES ($1, $2)
      ON CONFLICT (channel_id) DO UPDATE SET cursor = EXCLUDED.cursor, updated_at = now()`,
     [channelId, cursor],
   )
 }
 
-export async function deleteCursor(channelId: string): Promise<void> {
-  await pool.query("DELETE FROM import_cursors WHERE channel_id = $1", [channelId])
+export async function deleteCursor(db: Queryable, channelId: string): Promise<void> {
+  await db.query("DELETE FROM import_cursors WHERE channel_id = $1", [channelId])
 }
 
 /** Garante uma linha em external_skus para cada SKU (sem produto, se ainda não mapeado). */
@@ -108,8 +108,8 @@ export async function upsertSkuMapping(tx: Tx, channelId: string, externalSku: s
 
 export type PendingSku = { channelId: string; externalSku: string; pendingOrders: number; firstSeenAt: Date }
 
-export async function listUnmappedSkus(): Promise<PendingSku[]> {
-  const result = await pool.query<{ channel_id: string; external_sku: string; pending_orders: string; created_at: Date }>(
+export async function listUnmappedSkus(db: Queryable): Promise<PendingSku[]> {
+  const result = await db.query<{ channel_id: string; external_sku: string; pending_orders: string; created_at: Date }>(
     `SELECT e.channel_id, e.external_sku, e.created_at,
             (SELECT count(DISTINCT oi.order_id) FROM order_items oi JOIN orders o ON o.id = oi.order_id
               WHERE o.channel_id = e.channel_id AND oi.external_sku = e.external_sku AND oi.product_id IS NULL
@@ -126,8 +126,8 @@ export async function listUnmappedSkus(): Promise<PendingSku[]> {
 
 export type Channel = { id: string; provider: string; name: string; connectionStatus: string }
 
-export async function listChannels(): Promise<Channel[]> {
-  const result = await pool.query<{ id: string; provider: string; name: string; connection_status: string }>(
+export async function listChannels(db: Queryable): Promise<Channel[]> {
+  const result = await db.query<{ id: string; provider: string; name: string; connection_status: string }>(
     "SELECT id, provider, name, connection_status FROM sales_channels ORDER BY created_at, id",
   )
   return result.rows.map((row) => ({

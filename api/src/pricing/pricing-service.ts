@@ -67,15 +67,15 @@ function toChannelView({ feeBp, ...rest }: SalesChannel): ChannelView {
 }
 
 export async function getSettings(): Promise<SettingsView> {
-  return toSettingsView(await findSettings())
+  return toSettingsView(await findSettings(pool))
 }
 
 export async function updateSettings(settings: PricingSettings): Promise<SettingsView> {
-  return toSettingsView(await saveSettings(settings))
+  return toSettingsView(await saveSettings(pool, settings))
 }
 
 export async function getChannels(): Promise<ChannelView[]> {
-  return (await listChannels(false)).map(toChannelView)
+  return (await listChannels(pool, false)).map(toChannelView)
 }
 
 function channelNameConflict(error: unknown): boolean {
@@ -84,7 +84,7 @@ function channelNameConflict(error: unknown): boolean {
 
 export async function createChannel(channel: ChannelInput): Promise<ChannelView> {
   try {
-    return toChannelView(await insertChannel(channel))
+    return toChannelView(await insertChannel(pool, channel))
   } catch (error) {
     if (channelNameConflict(error)) throw new ConflictError("Já existe um canal com esse nome")
     throw error
@@ -93,7 +93,7 @@ export async function createChannel(channel: ChannelInput): Promise<ChannelView>
 
 export async function patchChannel(id: string, patch: Partial<ChannelInput>): Promise<ChannelView> {
   try {
-    const channel = await updateChannel(id, patch)
+    const channel = await updateChannel(pool, id, patch)
     if (!channel) throw new NotFoundError("Canal não encontrado")
     return toChannelView(channel)
   } catch (error) {
@@ -124,10 +124,10 @@ async function requireProduct(productId: string): Promise<Product> {
 export async function getProductPricing(productId: string, draft?: CostSheet): Promise<ProductPricing> {
   const product = await requireProduct(productId)
   const [settings, channels, materials, saved] = await Promise.all([
-    findSettings(),
-    listChannels(true),
-    listMaterialUsage(productId),
-    findCostSheet(productId),
+    findSettings(pool),
+    listChannels(pool, true),
+    listMaterialUsage(pool, productId),
+    findCostSheet(pool, productId),
   ])
   const sheet = draft ?? saved ?? DEFAULT_COST_SHEET
   const breakdown = costBreakdown(settings, sheet, materials)
@@ -159,7 +159,7 @@ export async function getProductPricing(productId: string, draft?: CostSheet): P
 
 export async function saveCostSheet(productId: string, sheet: CostSheet): Promise<ProductPricing> {
   await requireProduct(productId)
-  await upsertCostSheet(productId, sheet)
+  await upsertCostSheet(pool, productId, sheet)
   return getProductPricing(productId)
 }
 
@@ -177,13 +177,13 @@ export type ProductCost = {
 /** Visão geral: custo por peça × preço atual de cada produto ativo. */
 export async function listProductCosts(page: PageRequest): Promise<Page<ProductCost>> {
   const [settings, channels, products] = await Promise.all([
-    findSettings(),
-    listChannels(true),
-    listProducts({ active: true }, page),
+    findSettings(pool),
+    listChannels(pool, true),
+    listProducts(pool, { active: true }, page),
   ])
   // Duas consultas para a página inteira, em vez de duas por produto.
   const productIds = products.items.map((product) => product.id)
-  const [usageByProduct, sheets] = await Promise.all([listMaterialUsageByProduct(productIds), findCostSheets(productIds)])
+  const [usageByProduct, sheets] = await Promise.all([listMaterialUsageByProduct(pool, productIds), findCostSheets(pool, productIds)])
   const items = products.items.map((product): ProductCost => {
     const sheet = sheets.get(product.id) ?? null
     const { unitCostCents } = costBreakdown(settings, sheet ?? DEFAULT_COST_SHEET, usageByProduct.get(product.id) ?? [])

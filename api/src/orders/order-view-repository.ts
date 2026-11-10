@@ -1,4 +1,4 @@
-import { pool, queryPage, type Queryable } from "../db.js"
+import { queryPage, type Queryable } from "../db.js"
 import type { PageRequest } from "../pagination.js"
 import type { OrderStatus } from "./order-rules.js"
 
@@ -154,48 +154,62 @@ export type OrderSummary = {
   totalCents: number
 }
 
+type SummaryRow = {
+  id: string
+  provider: string
+  external_order_id: string
+  status: OrderStatus
+  external_status: string | null
+  ordered_at: Date
+  ship_by: Date | null
+  item_count: string
+  total_cents: string
+}
+
+const SUMMARY_SELECT = `
+  SELECT o.id, c.provider, o.external_order_id, o.status, o.external_status, o.ordered_at, o.ship_by,
+         (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = o.id) AS item_count,
+         (SELECT COALESCE(SUM(quantity::bigint * unit_price_cents), 0) FROM order_items WHERE order_id = o.id) AS total_cents
+  FROM orders o JOIN sales_channels c ON c.id = o.channel_id`
+
+// Prazo de envio mais próximo primeiro; sem prazo depois; empate pela data do pedido e id.
+const SUMMARY_ORDER = "ORDER BY o.ship_by ASC NULLS LAST, o.ordered_at, o.id"
+
+const toSummary = (row: SummaryRow): OrderSummary => ({
+  id: row.id,
+  channelProvider: row.provider,
+  externalOrderId: row.external_order_id,
+  status: row.status,
+  externalStatus: row.external_status,
+  orderedAt: row.ordered_at,
+  shipBy: row.ship_by,
+  itemCount: Number(row.item_count),
+  totalCents: Number(row.total_cents),
+})
+
 export async function listOrders(
+  db: Queryable,
   filter: { status?: OrderStatus; overdue?: boolean },
   page: PageRequest,
 ): Promise<{ items: OrderSummary[]; total: number }> {
   // overdue: em aberto (nem enviado nem cancelado) e com prazo de envio já vencido.
   const where = `WHERE ($1::text IS NULL OR o.status = $1)
                    AND (NOT $2::boolean OR (o.status NOT IN ('shipped', 'cancelled') AND o.ship_by < now()))`
-  const { rows, total } = await queryPage<{
-    id: string
-    provider: string
-    external_order_id: string
-    status: OrderStatus
-    external_status: string | null
-    ordered_at: Date
-    ship_by: Date | null
-    item_count: string
-    total_cents: string
-  }>(
-    // Prazo de envio mais próximo primeiro; sem prazo depois; empate pela data do pedido e id.
-    `SELECT o.id, c.provider, o.external_order_id, o.status, o.external_status, o.ordered_at, o.ship_by,
-            (SELECT COALESCE(SUM(quantity), 0) FROM order_items WHERE order_id = o.id) AS item_count,
-            (SELECT COALESCE(SUM(quantity::bigint * unit_price_cents), 0) FROM order_items WHERE order_id = o.id) AS total_cents
-     FROM orders o JOIN sales_channels c ON c.id = o.channel_id
-     ${where}
-     ORDER BY o.ship_by ASC NULLS LAST, o.ordered_at, o.id
-     LIMIT $3 OFFSET $4`,
+  const { rows, total } = await queryPage<SummaryRow>(
+    db,
+    `${SUMMARY_SELECT} ${where} ${SUMMARY_ORDER} LIMIT $3 OFFSET $4`,
     `SELECT count(*) AS total FROM orders o ${where}`,
     [filter.status ?? null, filter.overdue ?? false],
     page,
   )
-  return {
-    items: rows.map((row) => ({
-      id: row.id,
-      channelProvider: row.provider,
-      externalOrderId: row.external_order_id,
-      status: row.status,
-      externalStatus: row.external_status,
-      orderedAt: row.ordered_at,
-      shipBy: row.ship_by,
-      itemCount: Number(row.item_count),
-      totalCents: Number(row.total_cents),
-    })),
-    total,
-  }
+  return { items: rows.map(toSummary), total }
+}
+
+/** Pedidos em aberto na ordem de atendimento (visão geral: próximos envios). */
+export async function listOpenOrdersByDeadline(db: Queryable, limit: number): Promise<OrderSummary[]> {
+  const result = await db.query<SummaryRow>(
+    `${SUMMARY_SELECT} WHERE o.status NOT IN ('shipped', 'cancelled') ${SUMMARY_ORDER} LIMIT $1`,
+    [limit],
+  )
+  return result.rows.map(toSummary)
 }

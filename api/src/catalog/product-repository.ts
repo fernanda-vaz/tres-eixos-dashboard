@@ -1,4 +1,4 @@
-import { pool, queryPage, type Queryable } from "../db.js"
+import { queryPage, type Queryable } from "../db.js"
 import type { PageRequest } from "../pagination.js"
 import { likePattern } from "../sql.js"
 import type { Product, ProductFilter, ProductPatch } from "./product.js"
@@ -30,10 +30,11 @@ export async function insertProduct(db: Queryable, product: Omit<Product, "activ
   return toProduct(result.rows[0])
 }
 
-export async function listProducts(filter: ProductFilter, page: PageRequest): Promise<{ items: Product[]; total: number }> {
+export async function listProducts(db: Queryable, filter: ProductFilter, page: PageRequest): Promise<{ items: Product[]; total: number }> {
   const where = `WHERE ($1::text IS NULL OR sku ILIKE $1 OR name ILIKE $1)
                    AND ($2::boolean IS NULL OR active = $2)`
   const { rows, total } = await queryPage<ProductRow>(
+    db,
     `SELECT ${COLUMNS} FROM products ${where} ORDER BY created_at, id LIMIT $3 OFFSET $4`,
     `SELECT count(*) AS total FROM products ${where}`,
     [filter.search ? likePattern(filter.search) : null, filter.active ?? null],
@@ -52,9 +53,15 @@ export async function findProductsBySku(db: Queryable, skus: string[]): Promise<
   return new Map(result.rows.map((row) => [row.sku, toProduct(row)]))
 }
 
-export async function updateProduct(id: string, patch: ProductPatch): Promise<Product | null> {
+/** Um produto pelo SKU exato (já normalizado por parseSku). */
+export async function findProductBySku(db: Queryable, sku: string): Promise<Product | null> {
+  const result = await db.query<ProductRow>(`SELECT ${COLUMNS} FROM products WHERE sku = $1`, [sku])
+  return result.rows[0] ? toProduct(result.rows[0]) : null
+}
+
+export async function updateProduct(db: Queryable, id: string, patch: ProductPatch): Promise<Product | null> {
   // Colunas fixas no código; valores sempre como parâmetros.
-  const result = await pool.query<ProductRow>(
+  const result = await db.query<ProductRow>(
     `UPDATE products SET
        name = COALESCE($2, name),
        price_cents = COALESCE($3, price_cents),

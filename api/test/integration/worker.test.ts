@@ -14,7 +14,7 @@ after(async () => {
 })
 
 test("worker publica cada evento uma vez, em ordem por pedido, mesmo com dois workers simultâneos", async () => {
-  const { publishPendingBatch } = await import("../../src/outbox-worker.js")
+  const { publishPendingBatch } = await import("../../src/outbox/worker.js")
   const product = await productWithStock(api, 2)
   await createOrder(api, [{ sku: product.sku, quantity: 1 }])
   await createOrder(api, [{ sku: product.sku, quantity: 1 }])
@@ -37,7 +37,7 @@ test("worker publica cada evento uma vez, em ordem por pedido, mesmo com dois wo
 })
 
 test("falha na publicação reagenda o evento e segura os eventos seguintes do mesmo pedido", async () => {
-  const { publishPendingBatch } = await import("../../src/outbox-worker.js")
+  const { publishPendingBatch } = await import("../../src/outbox/worker.js")
   await env.pool.query("UPDATE outbox SET published_at = now() WHERE published_at IS NULL")
   const product = await productWithStock(api, 1)
   const order = await createOrder(api, [{ sku: product.sku, quantity: 1 }])
@@ -46,7 +46,7 @@ test("falha na publicação reagenda o evento e segura os eventos seguintes do m
   assert.ok(events.rows[0].n >= 2, "o pedido tem mais de um evento pendente")
 
   const failing = { publish: async () => { throw new Error("broker fora do ar") } }
-  assert.deepEqual(await publishPendingBatch(failing, 100), { published: 0, failed: 1 }, "só o primeiro evento do pedido é tentado")
+  assert.deepEqual(await publishPendingBatch(failing, 100), { published: 0, failed: 1, dead: 0 }, "só o primeiro evento do pedido é tentado")
   const failed = await env.pool.query(
     "SELECT attempts, last_error, next_attempt_at > now() AS later, lease_id FROM outbox WHERE aggregate_id = $1 AND attempts > 0",
     [order.body.id],
@@ -56,7 +56,7 @@ test("falha na publicação reagenda o evento e segura os eventos seguintes do m
   assert.equal(failed.rows[0].later, true)
   assert.equal(failed.rows[0].lease_id, null)
   const ok = { publish: async () => {} }
-  assert.deepEqual(await publishPendingBatch(ok, 100), { published: 0, failed: 0 }, "os seguintes esperam o que falhou")
+  assert.deepEqual(await publishPendingBatch(ok, 100), { published: 0, failed: 0, dead: 0 }, "os seguintes esperam o que falhou")
 })
 
 test("limite de login fica no banco, sem guardar e-mail em texto", async () => {

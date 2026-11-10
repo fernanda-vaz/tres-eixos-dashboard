@@ -1,7 +1,7 @@
 import { findProductById } from "../catalog/product-repository.js"
-import { withTransaction, type Tx } from "../db.js"
+import { pool, withTransaction, type Tx } from "../db.js"
 import { ConflictError, ValidationError } from "../http/errors.js"
-import { allocateOrder } from "../orders/allocation.js"
+import { allocateOrder } from "../fulfillment/allocation.js"
 import { lockInventory } from "../inventory/inventory-repository.js"
 import {
   assignProductToPendingItems,
@@ -74,5 +74,5 @@ async function lockPendingOrders(tx: Tx, orderIds: string[]): Promise<string[]> 
 }
 
 export function listPendingSkus(): Promise<PendingSku[]> {
-  return listUnmappedSkus()
+  return listUnmappedSkus(pool)
 }
